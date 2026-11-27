@@ -8,5 +8,5 @@ data/
 *.log
 coverage/
 
-# Local deployment runbook; keep out of GitHub.
+# Local deployment runbook; keep out of GitHub and Gitee.
 /docs/BAOTA-DEPLOY.zh-CN.md
