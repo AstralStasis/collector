@@ -422,7 +422,7 @@ function render() {
     exchange: "可兑换的独占物品",
   };
   $("#app").innerHTML =
-    `<div class="mobile-overlay" data-action="close-menu"></div><aside class="sidebar" aria-label="主要导航"><button class="brand" data-action="navigate" data-view="overview" aria-label="光之藏馆首页"><span class="brand-symbol">${icon("star")}</span><span><h1>光之藏馆</h1><small>EORZEA ARCHIVE</small></span></button><div class="nav-label">你的冒险手记</div><nav class="nav-stack">${navItem("overview", "收藏总览", "grid")}${navItem("wishlist", "我的心愿单", "heart", data.wishlist.length, true)}${navItem("plan", "收集计划", "route", data.plan.filter((k) => !ownedKeys.has(k)).length)}</nav>${catalogNavigation()}<div class="nav-label">成长记录</div><nav class="nav-stack">${navItem("progress", "收藏进度", "trophy")}</nav><div class="sidebar-bottom"><div class="sidebar-note">${icon("feather")}<strong>每一份热爱，都有回响</strong><p>不必急着抵达终点。<br>下一份珍藏，就在下一段旅途。</p><button data-action="planner">寻找收藏灵感 ${icon("arrow")}</button></div><button class="save-status" data-action="profile"><span class="dot"></span><span data-sync-status>${esc(archiveSync.state.message)}</span></button><div class="sidebar-footer">${icon("settings")}<button data-action="profile">档案设置</button><span>v1.0</span></div></div></aside><div class="app-shell"><header class="topbar"><button class="icon-btn mobile-menu" data-action="open-menu" aria-label="打开导航">${icon("menu")}</button><div class="breadcrumb">${icon("home")}<span>我的藏馆</span><span class="slash">/</span><span>${titles[view] || optional(categories[view], entry => entry.title) || "收藏总览"}</span></div><div class="top-actions"><label class="global-search">${icon("search")}<input id="global-search" type="search" autocomplete="off" maxlength="80" placeholder="搜索藏品、名称或获取方式…" value="${esc(query)}" aria-label="搜索全部藏品"><kbd>Ctrl K</kbd></label><button class="icon-btn notice-button" data-action="activity" aria-label="查看收藏动态">${icon("bell")}</button><button class="profile-button" data-action="profile"><span class="profile-avatar">光</span><div><strong>${esc(data.profile.name)}</strong><small>${data.profile.demo ? "演示档案 · " : ""}收藏家</small></div>${icon("down")}</button></div></header><main id="main" class="main" tabindex="-1"></main></div>`;
+    `<div class="mobile-overlay" data-action="close-menu"></div><aside class="sidebar" aria-label="主要导航"><button class="brand" data-action="navigate" data-view="overview" aria-label="光之藏馆首页"><span class="brand-symbol">${icon("star")}</span><span><h1>光之藏馆</h1><small>EORZEA ARCHIVE</small></span></button><div class="nav-label">你的冒险手记</div><nav class="nav-stack">${navItem("overview", "收藏总览", "grid")}${navItem("wishlist", "我的心愿单", "heart", data.wishlist.length, true)}${navItem("plan", "收集计划", "route", data.plan.filter((k) => !ownedKeys.has(k)).length)}</nav>${catalogNavigation()}<div class="nav-label">成长记录</div><nav class="nav-stack">${navItem("progress", "收藏进度", "trophy")}</nav><div class="sidebar-bottom"><div class="sidebar-note">${icon("feather")}<strong>每一份热爱，都有回响</strong><p>不必急着抵达终点。<br>下一份珍藏，就在下一段旅途。</p><button data-action="planner">寻找收藏灵感 ${icon("arrow")}</button></div><button class="save-status" data-action="profile"><span class="dot"></span><span data-sync-status>${esc(archiveSync.state.message)}</span></button><div class="sidebar-footer">${icon("settings")}<button data-action="profile">档案设置</button><span>v1.0</span></div></div></aside><div class="app-shell"><header class="topbar"><button class="icon-btn mobile-menu" data-action="open-menu" aria-label="打开导航">${icon("menu")}</button><div class="breadcrumb">${icon("home")}<span>我的藏馆</span><span class="slash">/</span><span>${titles[view] || optional(categories[view], entry => entry.title) || "收藏总览"}</span></div><div class="top-actions"><label class="global-search">${icon("search")}<input id="global-search" type="search" autocomplete="off" maxlength="80" placeholder="搜索藏品、名称或获取方式…" value="${esc(query)}" aria-label="搜索全部藏品"><kbd>Ctrl K</kbd></label><button class="icon-btn notice-button" data-action="announcements" aria-label="查看网站修改公告" title="网站修改公告">${icon("bell")}</button><button class="profile-button" data-action="profile"><span class="profile-avatar">光</span><div><strong>${esc(data.profile.name)}</strong><small>${data.profile.demo ? "演示档案 · " : ""}收藏家</small></div>${icon("down")}</button></div></header><main id="main" class="main" tabindex="-1"></main></div>`;
   renderMain();
 }
 function ring() {
@@ -745,11 +745,29 @@ function openAbout() {
     "about",
   );
 }
-function openActivity() {
-  const list = data.activity.slice(0, 12);
+// Newest website changes first; these announcements are shared by every archive.
+const siteAnnouncements = [
+  {
+    date: "2026-11-27", title: "网站修改公告上线",
+    text: "右上角铃铛现用于查看网站功能调整与修复记录，方便了解藏馆的最新变化。",
+  },
+  {
+    date: "2026-11-27", title: "九类藏品新增组合筛选",
+    text: "坐骑、宠物、鸟甲、乐谱、九宫幻卡、面部配饰、时尚配饰、肖像教材和表情动作，现支持按资料片版本与获取方式组合筛选，并可一键重置。",
+  },
+  {
+    date: "2026-11-27", title: "图鉴扩充至 3,414 个条目",
+    text: "扩充九类普通收藏目录，保留武器与工具的终阶段记录；藏品详情补充说明、属性和获取资料。",
+  },
+  {
+    date: "2026-11-27", title: "大目录浏览与搜索优化",
+    text: "图鉴分批显示，可继续加载更多藏品；搜索、筛选与进度统计均使用完整目录，同时优化手机浏览体验。",
+  },
+];
+function openAnnouncements() {
   showModal(
-    `<div class="simple-modal"><div class="eyebrow" style="margin-bottom:12px">LITTLE MOMENTS, BIG MEMORIES</div><h2 id="modal-title">收藏动态</h2><p class="muted">记录每一次相遇，也记录每一步成长。</p><div class="notice-list">${list.length ? list.map((x) => `<div class="notice-entry">${icon("sparkles")}<div>${esc(x.text)}<small>${esc(new Date(x.at).toLocaleString("zh-CN"))}</small></div></div>`).join("") : `<div class="notice-entry">${icon("book")}<div>${data.profile.demo ? "当前为演示档案，欢迎先体验图鉴和收藏功能。" : "你的收藏故事，从这里开始。"}<small>标记新的收藏后，这里会留下记录。</small></div></div>`}</div></div>`,
-    "activity",
+    `<div class="simple-modal"><div class="eyebrow" style="margin-bottom:12px">WEBSITE UPDATES</div><h2 id="modal-title">网站修改公告</h2><p class="muted">在这里查看藏馆的功能更新、体验优化与问题修复。</p><div class="notice-list">${siteAnnouncements.map((entry) => `<div class="notice-entry">${icon("sparkles")}<div><strong>${esc(entry.title)}</strong><div>${esc(entry.text)}</div><small><time datetime="${esc(entry.date)}">${esc(entry.date)}</time></small></div></div>`).join("")}</div></div>`,
+    "announcements",
   );
 }
 function openPlanner(style) {
@@ -890,7 +908,7 @@ document.addEventListener("click", (event) => {
   if (a === "sync-retry") { void reconnectArchive(); return; }
   if (a === "account-logout") { void logoutAccount(); return; }
   if (a === "about") return openAbout();
-  if (a === "activity") return openActivity();
+  if (a === "announcements") return openAnnouncements();
   if (a === "close-modal") return closeModal();
   if (a === "open-menu") {
     $(".sidebar").classList.add("open");

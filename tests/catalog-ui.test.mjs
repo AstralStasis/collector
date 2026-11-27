@@ -140,4 +140,30 @@ check("150ms debounce waits for IME completion", () => {
   assert.equal(run("query"), "啦哩吼舞");
 });
 
+check("website announcements are shared updates rather than personal collection activity", async () => {
+  context.originalArchiveJSON = run("JSON.stringify(data)");
+  context.originalShowModal = run("showModal");
+  try {
+    run('data.activity=[{text:"PRIVATE_COLLECTION_ACTIVITY",at:1}];showModal=(html,type)=>{announcementCapture={html,type};};');
+    const archiveBefore = run("JSON.stringify(data)");
+    await listeners.click[0]({ target: { closest: () => ({ dataset: { action: "announcements" } }) } });
+    const captured = run("announcementCapture"), entries = Array.from(run("siteAnnouncements"));
+    assert.equal(captured.type, "announcements");
+    assert.match(captured.html, /<h2 id="modal-title">网站修改公告<\/h2>/);
+    assert(entries.length > 0);
+    assert.equal((captured.html.match(/class="notice-entry"/g) || []).length, entries.length);
+    for (const entry of entries) {
+      assert.match(entry.date, /^\d{4}-\d{2}-\d{2}$/);
+      assert(captured.html.includes(entry.title));
+      assert(captured.html.includes('<time datetime="' + entry.date + '">'));
+    }
+    assert(!captured.html.includes("PRIVATE_COLLECTION_ACTIVITY"));
+    assert(!captured.html.includes("收藏动态"));
+    assert.equal(run("JSON.stringify(data)"), archiveBefore);
+    run('data.activity=[];data.profile.demo=false;openAnnouncements();');
+    assert.equal(run("announcementCapture.html"), captured.html);
+  } finally {
+    run("showModal=originalShowModal;data=JSON.parse(originalArchiveJSON);refreshArchiveIndexes();");
+  }
+});
 
