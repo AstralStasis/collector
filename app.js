@@ -525,9 +525,9 @@ function renderCatalog() {
   const section = $("#catalog-section");
   if (!section) return;
   const exchangeFilters = exchangeFiltersHtml();
+  const { sources, patches, series, jobs } = cascadingFilterOptions();
   const scope = JSON.stringify([view, category, status, query, sort, source, patchFilter, jobFilter, seriesFilter, exchangeCurrency, exchangeExpansion, exchangeRegion]);
   if (scope !== resultScope) { resultScope = scope; visibleLimit = 96; }
-  const { sources, patches, series, jobs } = cascadingFilterOptions();
   const base = baseItems(),
     items = filteredItems(),
     owned = base.filter((x) => ownedKeys.has(x.key)).length;
@@ -601,7 +601,7 @@ function navigate(next) {
   patchFilter = "";
   jobFilter = "";
   seriesFilter = "";
-  showFilters = ["ultimates", "relics", "tools", "exchange"].includes(view);
+  showFilters = hasOwn(categories, view) || view === "exchange";
   closeModal(false);
   history.replaceState(null, "", "#" + view);
   render();
@@ -941,6 +941,7 @@ document.addEventListener("click", (event) => {
       return;
     }
     category = targetCategory;
+    if (hasOwn(categories, category)) showFilters = true;
     source = "";
     patchFilter = "";
     jobFilter = "";
