@@ -1858,6 +1858,16 @@ button {
   color: #b3bcba;
   margin: 19px 0 23px;
 }
+.detail-canonical { color: #8192a6; font-size: 11px; margin-top: 10px; }
+.detail-content .description, .api-text, .detail-quote { white-space: pre-line; overflow-wrap: anywhere; }
+.detail-quote { margin: 0 0 18px; padding: 10px 15px; border-left: 2px solid var(--gold); color: #aeb9c4; font-size: 12px; line-height: 1.9; }
+.detail-facts { margin: 0; font-size: 12px; }
+.detail-facts > div { display: grid; grid-template-columns: minmax(78px, 28%) minmax(0, 1fr); gap: 10px; padding: 5px 0; }
+.detail-facts dt { color: #889bad; }
+.detail-facts dd { margin: 0; color: #c0c8d0; overflow-wrap: anywhere; white-space: pre-line; }
+.detail-raw { margin: 0 0 17px; color: #889bad; font-size: 11px; }
+.detail-raw summary { cursor: pointer; }
+.detail-raw pre { max-height: 300px; overflow: auto; padding: 12px; background: #111c26; border: 1px solid #293847; border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 10px; line-height: 1.7; }
 .detail-source {
   border: 1px solid #36414c;
   background: #111c26;

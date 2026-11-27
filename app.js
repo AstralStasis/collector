@@ -187,11 +187,32 @@ let catalog = [],
   toastTimer,
   generated = [],
   preferenceDraft = null;
-const countOwned = (cat) =>
-  catalog.filter(
-    (x) => (!cat || x.category === cat) && data.owned.includes(x.key),
-  ).length;
-const find = (key) => catalog.find((x) => x.key === key);
+const catalogByKey = new Map(), catalogIndex = new Map(), searchIndex = new Map();
+let ownedKeys = new Set(), wishlistKeys = new Set(), planKeys = new Set();
+let visibleLimit = 96, resultScope = "", searchTimer, searchComposing = false;
+function refreshArchiveIndexes() {
+  ownedKeys = new Set(data.owned);
+  wishlistKeys = new Set(data.wishlist);
+  planKeys = new Set(data.plan);
+}
+function rebuildCatalogIndexes() {
+  catalogByKey.clear(); catalogIndex.clear(); searchIndex.clear();
+  catalog.forEach((x, index) => {
+    catalogByKey.set(x.key, x); catalogIndex.set(x.key, index);
+    const raw = x.collect?.data || {};
+    searchIndex.set(x.key, [x.name, x.english, x.source, x.sourceEnglish, x.sourceType, x.series, x.seriesAlias, x.seriesEnglish, x.jobAbbr, x.weaponType, x.command, x.cardNumber, x.id, ...itemJobs(x), raw.name, raw.description, raw.enhanced_description, ...(Array.isArray(raw.sources) ? raw.sources.map(s => s.text) : [])].join(" ").toLowerCase());
+  });
+}
+const countOwned = (cat) => catalog.filter(x => (!cat || x.category === cat) && ownedKeys.has(x.key)).length;
+const find = (key) => catalogByKey.get(key);
+const itemColor = (x) => colors[(catalogIndex.get(x.key) || 0) % colors.length];
+function catalogUpdatedAt() {
+  const sync = catalogMeta.apiSync || {};
+  const value = typeof sync === "string" ? sync : sync.fetchedAt || sync.completedAt || sync.updatedAt || sync.generatedAt;
+  if (!value) return "未提供更新时间";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "未提供更新时间" : date.toLocaleString("zh-CN");
+}
 const itemJobs = (x) => Array.isArray(x.jobs) ? x.jobs : x.job ? [x.job] : [];
 const itemSourceUrl = (x) => {
   const url = x.sourceUrl || `https://ffxivcollect.com/${x.category}/${x.id}`;
@@ -261,9 +282,9 @@ function normalize(raw) {
     !Array.isArray(raw.plan)
   )
     throw Error("无效的档案文件，请选择从本站导出的 JSON 备份。");
-  const keys = new Set(catalog.map((x) => x.key)),
-    list = (v) =>
-      [...new Set(v)].filter((x) => typeof x === "string" && keys.has(x));
+  // Keep saved keys even when a fallback catalog is older than this archive.
+  const list = (v) => [...new Set(v)].filter((x) => typeof x === "string");
+  const owned = list(raw.owned), ownedSet = new Set(owned);
   const p = raw.preferences || {},
     preferences = {
       category:
@@ -284,8 +305,8 @@ function normalize(raw) {
       server: String(raw.profile.server || "艾欧泽亚").trim().slice(0, 24) || "艾欧泽亚",
       demo: !!raw.profile.demo,
     },
-    owned: list(raw.owned),
-    wishlist: list(raw.wishlist).filter((x) => !raw.owned.includes(x)),
+    owned,
+    wishlist: list(raw.wishlist).filter((x) => !ownedSet.has(x)),
     plan: list(raw.plan),
     preferences,
     activity: (Array.isArray(raw.activity) ? raw.activity : [])
@@ -306,6 +327,7 @@ function save(activity) {
   archiveSync.queue();
 }
 function persistLocalArchive() {
+  refreshArchiveIndexes();
   try { localStorage.setItem(storageKey,JSON.stringify(data)); }
   catch { toast("浏览器未允许保存离线备份，请导出档案。"); }
 }
@@ -353,7 +375,7 @@ function matchesExchange(x, currency = exchangeCurrency, expansion = exchangeExp
   return !!x.exchangeExclusive && (x.exchanges || []).some((e) => (!currency || e.currency === currency) && (!expansion || e.expansion === expansion) && (!region || e.region === region));
 }
 function matchesCollectionScope(x) {
-  if (view === "wishlist") return data.wishlist.includes(x.key);
+  if (view === "wishlist") return wishlistKeys.has(x.key);
   if (view === "exchange") return matchesExchange(x);
   return true;
 }
@@ -383,7 +405,7 @@ function exchangeFiltersHtml() {
   if (exchangeExpansion && !Object.hasOwn(regions, exchangeExpansion)) exchangeExpansion = "";
   const areas = exchangeExpansion ? regions[exchangeExpansion] : Object.values(regions).flat();
   if (exchangeRegion && !areas.includes(exchangeRegion)) exchangeRegion = "";
-  return `<section class="exchange-panel" aria-label="兑换清单筛选"><div><strong>${icon("folder")} 可兑换的独占物品列表</strong><p>按导图中的货币、版本和地区查找；只统计已核实兑换来源的精选收藏。</p></div><div class="filter-panel exchange-options"><label>兑换货币 <select id="exchange-currency" aria-label="兑换货币"><option value="">全部货币</option>${["gemstones", "mgp"].map((key) => `<option value="${key}" ${exchangeCurrency === key ? "selected" : ""}>${exchangeCurrencies[key]}</option>`).join("")}<optgroup label="狩猎点数">${["allied", "centurio", "nuts"].map((key) => `<option value="${key}" ${exchangeCurrency === key ? "selected" : ""}>${exchangeCurrencies[key]}</option>`).join("")}</optgroup></select></label>${exchangeCurrency === "gemstones" ? `<label>双色版本 <select id="exchange-expansion" aria-label="双色版本"><option value="">全部版本</option>${selectOptions(Object.keys(regions), exchangeExpansion)}</select></label><label>兑换地区 <select id="exchange-region" aria-label="兑换地区"><option value="">全部地区</option>${selectOptions(areas, exchangeRegion)}</select></label>` : ""}</div></section>`;
+  return `<section class="exchange-panel" aria-label="兑换清单筛选"><div><strong>${icon("folder")} 可兑换的独占物品列表</strong><p>按导图中的货币、版本和地区查找；只统计已核实兑换来源的收藏。</p></div><div class="filter-panel exchange-options"><label>兑换货币 <select id="exchange-currency" aria-label="兑换货币"><option value="">全部货币</option>${["gemstones", "mgp"].map((key) => `<option value="${key}" ${exchangeCurrency === key ? "selected" : ""}>${exchangeCurrencies[key]}</option>`).join("")}<optgroup label="狩猎点数">${["allied", "centurio", "nuts"].map((key) => `<option value="${key}" ${exchangeCurrency === key ? "selected" : ""}>${exchangeCurrencies[key]}</option>`).join("")}</optgroup></select></label>${exchangeCurrency === "gemstones" ? `<label>双色版本 <select id="exchange-expansion" aria-label="双色版本"><option value="">全部版本</option>${selectOptions(Object.keys(regions), exchangeExpansion)}</select></label><label>兑换地区 <select id="exchange-region" aria-label="兑换地区"><option value="">全部地区</option>${selectOptions(areas, exchangeRegion)}</select></label>` : ""}</div></section>`;
 }
 
 function render() {
@@ -396,12 +418,12 @@ function render() {
     exchange: "可兑换的独占物品",
   };
   $("#app").innerHTML =
-    `<div class="mobile-overlay" data-action="close-menu"></div><aside class="sidebar" aria-label="主要导航"><button class="brand" data-action="navigate" data-view="overview" aria-label="光之藏馆首页"><span class="brand-symbol">${icon("star")}</span><span><h1>光之藏馆</h1><small>EORZEA ARCHIVE</small></span></button><div class="nav-label">你的冒险手记</div><nav class="nav-stack">${navItem("overview", "收藏总览", "grid")}${navItem("wishlist", "我的心愿单", "heart", data.wishlist.length, true)}${navItem("plan", "收集计划", "route", data.plan.filter((k) => !data.owned.includes(k)).length)}</nav>${catalogNavigation()}<div class="nav-label">成长记录</div><nav class="nav-stack">${navItem("progress", "收藏进度", "trophy")}</nav><div class="sidebar-bottom"><div class="sidebar-note">${icon("feather")}<strong>每一份热爱，都有回响</strong><p>不必急着抵达终点。<br>下一份珍藏，就在下一段旅途。</p><button data-action="planner">寻找收藏灵感 ${icon("arrow")}</button></div><button class="save-status" data-action="profile"><span class="dot"></span><span data-sync-status>${esc(archiveSync.state.message)}</span></button><div class="sidebar-footer">${icon("settings")}<button data-action="profile">档案设置</button><span>v1.0</span></div></div></aside><div class="app-shell"><header class="topbar"><button class="icon-btn mobile-menu" data-action="open-menu" aria-label="打开导航">${icon("menu")}</button><div class="breadcrumb">${icon("home")}<span>我的藏馆</span><span class="slash">/</span><span>${titles[view] || categories[view]?.title || "收藏总览"}</span></div><div class="top-actions"><label class="global-search">${icon("search")}<input id="global-search" type="search" autocomplete="off" maxlength="80" placeholder="搜索藏品、名称或获取方式…" value="${esc(query)}" aria-label="搜索全部藏品"><kbd>Ctrl K</kbd></label><button class="icon-btn notice-button" data-action="activity" aria-label="查看收藏动态">${icon("bell")}</button><button class="profile-button" data-action="profile"><span class="profile-avatar">光</span><div><strong>${esc(data.profile.name)}</strong><small>${data.profile.demo ? "演示档案 · " : ""}收藏家</small></div>${icon("down")}</button></div></header><main id="main" class="main" tabindex="-1"></main></div>`;
+    `<div class="mobile-overlay" data-action="close-menu"></div><aside class="sidebar" aria-label="主要导航"><button class="brand" data-action="navigate" data-view="overview" aria-label="光之藏馆首页"><span class="brand-symbol">${icon("star")}</span><span><h1>光之藏馆</h1><small>EORZEA ARCHIVE</small></span></button><div class="nav-label">你的冒险手记</div><nav class="nav-stack">${navItem("overview", "收藏总览", "grid")}${navItem("wishlist", "我的心愿单", "heart", data.wishlist.length, true)}${navItem("plan", "收集计划", "route", data.plan.filter((k) => !ownedKeys.has(k)).length)}</nav>${catalogNavigation()}<div class="nav-label">成长记录</div><nav class="nav-stack">${navItem("progress", "收藏进度", "trophy")}</nav><div class="sidebar-bottom"><div class="sidebar-note">${icon("feather")}<strong>每一份热爱，都有回响</strong><p>不必急着抵达终点。<br>下一份珍藏，就在下一段旅途。</p><button data-action="planner">寻找收藏灵感 ${icon("arrow")}</button></div><button class="save-status" data-action="profile"><span class="dot"></span><span data-sync-status>${esc(archiveSync.state.message)}</span></button><div class="sidebar-footer">${icon("settings")}<button data-action="profile">档案设置</button><span>v1.0</span></div></div></aside><div class="app-shell"><header class="topbar"><button class="icon-btn mobile-menu" data-action="open-menu" aria-label="打开导航">${icon("menu")}</button><div class="breadcrumb">${icon("home")}<span>我的藏馆</span><span class="slash">/</span><span>${titles[view] || categories[view]?.title || "收藏总览"}</span></div><div class="top-actions"><label class="global-search">${icon("search")}<input id="global-search" type="search" autocomplete="off" maxlength="80" placeholder="搜索藏品、名称或获取方式…" value="${esc(query)}" aria-label="搜索全部藏品"><kbd>Ctrl K</kbd></label><button class="icon-btn notice-button" data-action="activity" aria-label="查看收藏动态">${icon("bell")}</button><button class="profile-button" data-action="profile"><span class="profile-avatar">光</span><div><strong>${esc(data.profile.name)}</strong><small>${data.profile.demo ? "演示档案 · " : ""}收藏家</small></div>${icon("down")}</button></div></header><main id="main" class="main" tabindex="-1"></main></div>`;
   renderMain();
 }
 function ring() {
   const percent = Math.round((countOwned() / catalog.length) * 100);
-  return `<div class="progress-ring"><svg viewBox="0 0 114 114" aria-hidden="true"><circle cx="57" cy="57" r="48"/><circle class="ring-value" cx="57" cy="57" r="48" stroke-dasharray="301.59" stroke-dashoffset="${301.59 * (1 - percent / 100)}"/></svg><div class="ring-text"><strong>${percent}<small>%</small></strong><span>精选图鉴完成度</span></div></div>`;
+  return `<div class="progress-ring"><svg viewBox="0 0 114 114" aria-hidden="true"><circle cx="57" cy="57" r="48"/><circle class="ring-value" cx="57" cy="57" r="48" stroke-dasharray="301.59" stroke-dashoffset="${301.59 * (1 - percent / 100)}"/></svg><div class="ring-text"><strong>${percent}<small>%</small></strong><span>图鉴完成度</span></div></div>`;
 }
 function stats() {
   return `<div class="stats-row">${Object.entries(categories)
@@ -414,7 +436,7 @@ function stats() {
     .join("")}</div>`;
 }
 function footer() {
-  return `<footer class="site-footer"><div>${icon("feather")}<strong>为每一位热爱艾欧泽亚的光之战士而作</strong><span>·</span><button class="text-btn" data-action="about">关于藏馆</button></div><span>非官方同人项目 · 精选资料来自 <a href="https://ffxivcollect.com/" target="_blank" rel="noopener noreferrer">FFXIV Collect</a> / XIVAPI<br>© SQUARE ENIX CO., LTD. All Rights Reserved.</span></footer>`;
+  return `<footer class="site-footer"><div>${icon("feather")}<strong>为每一位热爱艾欧泽亚的光之战士而作</strong><span>·</span><button class="text-btn" data-action="about">关于藏馆</button></div><span>非官方同人项目 · 资料来自 <a href="https://ffxivcollect.com/" target="_blank" rel="noopener noreferrer">FFXIV Collect</a> / XIVAPI<br>© SQUARE ENIX CO., LTD. All Rights Reserved.</span></footer>`;
 }
 function renderMain() {
   const main = $("#main");
@@ -428,7 +450,7 @@ function renderMain() {
   }
   const isOverview = view === "overview";
   const heading = isOverview
-    ? `<div class="welcome"><div><p>属于你的艾欧泽亚收藏手记</p><h2>你好，${esc(data.profile.name)} <span>✧</span></h2></div><div><span class="welcome-note">${data.profile.demo ? "正在浏览演示收藏" : "继续书写你的收藏故事"}</span><button class="secondary-btn" data-action="profile">${icon("folder")} 管理收藏档案</button></div></div><div class="hero-row"><section class="hero" aria-labelledby="hero-title"><div class="hero-content"><div class="eyebrow">${icon("sparkles")} EVERY COLLECTION TELLS A STORY</div><h2 id="hero-title">把艾欧泽亚的浪漫，<br><span>一件件收藏。</span></h2><p>从第一只陆行鸟，到心心念念的那一道光。<br>记录你的热爱，发现下一段值得出发的旅程。</p><button class="primary-btn" data-action="discover">发现下一份珍藏 ${icon("arrow")}</button></div><span class="hero-caption">${icon("compass")} 8.0 EVERCOLD · 官方预告插画</span></section><section class="journey-card" aria-label="我的收藏旅程"><div class="section-title"><h2>我的收藏旅程</h2>${icon("trophy")}</div>${ring()}<div class="journey-stats">已点亮 <strong>${countOwned()}</strong> 件珍藏 <span> / </span> 精选 ${catalog.length} 件</div><div class="journey-bottom"><span>${icon("feather")} 每一步，都算数</span><button data-action="navigate" data-view="progress">查看旅程 →</button></div></section></div>${stats()}`
+    ? `<div class="welcome"><div><p>属于你的艾欧泽亚收藏手记</p><h2>你好，${esc(data.profile.name)} <span>✧</span></h2></div><div><span class="welcome-note">${data.profile.demo ? "正在浏览演示收藏" : "继续书写你的收藏故事"}</span><button class="secondary-btn" data-action="profile">${icon("folder")} 管理收藏档案</button></div></div><div class="hero-row"><section class="hero" aria-labelledby="hero-title"><div class="hero-content"><div class="eyebrow">${icon("sparkles")} EVERY COLLECTION TELLS A STORY</div><h2 id="hero-title">把艾欧泽亚的浪漫，<br><span>一件件收藏。</span></h2><p>从第一只陆行鸟，到心心念念的那一道光。<br>记录你的热爱，发现下一段值得出发的旅程。</p><button class="primary-btn" data-action="discover">发现下一份珍藏 ${icon("arrow")}</button></div><span class="hero-caption">${icon("compass")} 8.0 EVERCOLD · 官方预告插画</span></section><section class="journey-card" aria-label="我的收藏旅程"><div class="section-title"><h2>我的收藏旅程</h2>${icon("trophy")}</div>${ring()}<div class="journey-stats">已点亮 <strong>${countOwned()}</strong> 件珍藏 <span> / </span>  ${catalog.length} 件</div><div class="journey-bottom"><span>${icon("feather")} 每一步，都算数</span><button data-action="navigate" data-view="progress">查看旅程 →</button></div></section></div>${stats()}`
     : pageHeading();
   main.innerHTML =
     heading +
@@ -439,7 +461,7 @@ function renderMain() {
 function pageHeading() {
   if (view === "exchange") return `<div class="page-heading"><div class="eyebrow">EXCLUSIVE EXCHANGE COLLECTIONS</div><h2>可兑换的独占物品列表</h2><p>双色宝石、金碟币与三类狩猎货币 · 已收录 ${exchangeCount()} 件兑换独占收藏</p><a class="text-btn" href="${esc(catalogMeta.mindmap?.source || "https://docs.qq.com/mind/DQ21qZGxMamNMYUJV")}" target="_blank" rel="noopener noreferrer">分类依据：收藏站思维导图 ${icon("external")}</a></div>`;
   const c = categories[view];
-  return `<div class="page-heading"><div class="eyebrow">${view === "wishlist" ? "SAVED FOR YOUR NEXT ADVENTURE" : view === "explore" ? "FIND YOUR NEXT FAVORITE" : c?.english || "YOUR COLLECTION"}</div><div class="heading-row"><div><h2>${view === "wishlist" ? "把心动，留给下一场冒险" : view === "explore" ? "寻找属于你的珍藏" : c?.title}</h2><p>${view === "wishlist" ? "这里住着你想带回家的珍藏。收藏后会自动从心愿单移除。" : view === "explore" ? `搜索「${esc(query)}」· 支持中文、英文及获取途径` : `${catalog.filter((x) => x.category === view).length} 件精选${c?.name} · 已点亮 ${countOwned(view)} 件 · 收藏进度由你亲手记录`}</p></div><button class="primary-btn" data-action="planner">${icon("sparkles")} 智能收集规划</button></div></div>`;
+  return `<div class="page-heading"><div class="eyebrow">${view === "wishlist" ? "SAVED FOR YOUR NEXT ADVENTURE" : view === "explore" ? "FIND YOUR NEXT FAVORITE" : c?.english || "YOUR COLLECTION"}</div><div class="heading-row"><div><h2>${view === "wishlist" ? "把心动，留给下一场冒险" : view === "explore" ? "寻找属于你的珍藏" : c?.title}</h2><p>${view === "wishlist" ? "这里住着你想带回家的珍藏。收藏后会自动从心愿单移除。" : view === "explore" ? `搜索「${esc(query)}」· 支持中文、英文及获取途径` : `${catalog.filter((x) => x.category === view).length} 件${c?.name} · 已点亮 ${countOwned(view)} 件 · 收藏进度由你亲手记录`}</p></div><button class="primary-btn" data-action="planner">${icon("sparkles")} 智能收集规划</button></div></div>`;
 }
 function rightRail() {
   const wishes = data.wishlist.map(find).filter(Boolean).slice(0, 3);
@@ -451,12 +473,9 @@ function baseItems() {
       (category === "all" || x.category === category) &&
       matchesCollectionScope(x) &&
       (!query ||
-        [x.name, x.english, x.source, x.sourceEnglish, x.sourceType, x.series, x.seriesAlias, x.seriesEnglish, x.jobAbbr, x.weaponType, ...itemJobs(x)]
-          .join(" ")
-          .toLowerCase()
-          .includes(query.toLowerCase())) &&
+        searchIndex.get(x.key)?.includes(query.toLowerCase())) &&
       (!source || x.sourceType === source) &&
-      (!patchFilter || x.patch.startsWith(patchFilter)) &&
+      (!patchFilter || String(x.patch ?? "").startsWith(patchFilter)) &&
       (!jobFilter || itemJobs(x).includes(jobFilter)) &&
       (!seriesFilter || x.series === seriesFilter),
   );
@@ -466,8 +485,8 @@ function filteredItems() {
     (x) =>
       status === "all" ||
       (status === "owned"
-        ? data.owned.includes(x.key)
-        : !data.owned.includes(x.key)),
+        ? ownedKeys.has(x.key)
+        : !ownedKeys.has(x.key)),
   );
   if (sort === "rare") items.sort((a, b) => (hasOwnedRate(a) ? a.ownedRate : Infinity) - (hasOwnedRate(b) ? b.ownedRate : Infinity));
   if (sort === "patch")
@@ -488,9 +507,9 @@ function cascadingFilterOptions() {
     ["5.", "暗影之逆焰 5.x"],
     ["6.", "晓月之终途 6.x"],
     ["7.", "黄金的遗产 7.x"],
-  ].filter(([prefix]) => sourceItems.some((x) => x.patch.startsWith(prefix)));
+  ].filter(([prefix]) => sourceItems.some((x) => String(x.patch ?? "").startsWith(prefix)));
   if (patchFilter && !patches.some(([prefix]) => prefix === patchFilter)) patchFilter = "";
-  const patchItems = sourceItems.filter((x) => !patchFilter || x.patch.startsWith(patchFilter));
+  const patchItems = sourceItems.filter((x) => !patchFilter || String(x.patch ?? "").startsWith(patchFilter));
   const series = [...new Set(patchItems.map((x) => x.series).filter(Boolean))];
   if (seriesFilter && !series.includes(seriesFilter)) seriesFilter = "";
   const seriesItems = patchItems.filter((x) => !seriesFilter || x.series === seriesFilter);
@@ -502,11 +521,13 @@ function renderCatalog() {
   const section = $("#catalog-section");
   if (!section) return;
   const exchangeFilters = exchangeFiltersHtml();
+  const scope = JSON.stringify([view, category, status, query, sort, source, patchFilter, jobFilter, seriesFilter, exchangeCurrency, exchangeExpansion, exchangeRegion]);
+  if (scope !== resultScope) { resultScope = scope; visibleLimit = 96; }
   const { sources, patches, series, jobs } = cascadingFilterOptions();
   const base = baseItems(),
     items = filteredItems(),
-    owned = base.filter((x) => data.owned.includes(x.key)).length;
-  section.innerHTML = `${exchangeFilters}<div class="section-title"><h2 id="catalog-title">${icon(view === "wishlist" ? "heart" : "compass")}${view === "wishlist" ? "我的心愿珍藏" : view === "overview" ? "探索你的下一份珍藏" : view === "explore" ? "图鉴搜索结果" : view === "exchange" ? "兑换收藏图鉴" : categories[view]?.title}</h2><button class="text-btn" data-action="filter-toggle">${icon("filter")} 筛选藏品</button></div><p class="catalog-subtitle">${view === "overview" ? "那些尚未相遇的风景，正等待着你。" : `找到 ${items.length} 件藏品 · 点击卡片查看获取途径`}</p><div class="catalog-update"><span>${icon("refresh")} 国际服 ${esc(catalogMeta.latestReleasedPatch || "—")} · 已收录至 ${esc(latestItemPatch())} 版本藏品</span><button class="text-btn" data-action="latest">探索 7.x 新藏品 ${icon("arrow")}</button></div><div class="tabs" role="tablist" aria-label="图鉴分类">${[["all", "全部藏品"], ...Object.entries(categories).map(([id, c]) => [id, c.name])].map(([id, name]) => `<button class="tab ${category === id ? "active" : ""}" role="tab" aria-selected="${category === id}" data-action="tab" data-category="${id}">${name}<small>${catalog.filter((x) => (id === "all" || x.category === id) && matchesCollectionScope(x)).length}</small></button>`).join("")}</div><div class="filters"><div class="filter-left">${[
+    owned = base.filter((x) => ownedKeys.has(x.key)).length;
+  section.innerHTML = `${exchangeFilters}<div class="section-title"><h2 id="catalog-title">${icon(view === "wishlist" ? "heart" : "compass")}${view === "wishlist" ? "我的心愿珍藏" : view === "overview" ? "探索你的下一份珍藏" : view === "explore" ? "图鉴搜索结果" : view === "exchange" ? "兑换收藏图鉴" : categories[view]?.title}</h2><button class="text-btn" data-action="filter-toggle">${icon("filter")} 筛选藏品</button></div><p class="catalog-subtitle">${view === "overview" ? "那些尚未相遇的风景，正等待着你。" : `找到 ${items.length} 件藏品 · 点击卡片查看获取途径`}</p><div class="catalog-update"><span>${icon("refresh")} 国际服 ${esc(catalogMeta.latestReleasedPatch || "—")} · 已收录至 ${esc(latestItemPatch())} 版本藏品 · 共 ${catalog.length} 件 · ${esc(catalogUpdatedAt())}</span><button class="text-btn" data-action="latest">探索 7.x 新藏品 ${icon("arrow")}</button></div><div class="tabs" role="tablist" aria-label="图鉴分类">${[["all", "全部藏品"], ...Object.entries(categories).map(([id, c]) => [id, c.name])].map(([id, name]) => `<button class="tab ${category === id ? "active" : ""}" role="tab" aria-selected="${category === id}" data-action="tab" data-category="${id}">${name}<small>${catalog.filter((x) => (id === "all" || x.category === id) && matchesCollectionScope(x)).length}</small></button>`).join("")}</div><div class="filters"><div class="filter-left">${[
     ["all", "全部", base.length],
     ["missing", "未收藏", base.length - owned],
     ["owned", "已收藏", owned],
@@ -528,19 +549,19 @@ function renderCatalog() {
             "",
           )} </select></label>${series.length ? `<label>强化 / 绝本系列 <select id="series-select" aria-label="强化或绝本系列"><option value="">全部系列</option>${series.map((value) => `<option value="${esc(value)}" ${seriesFilter === value ? "selected" : ""}>${esc(seriesLabel(value))}</option>`).join("")}</select></label>` : ""}${jobs.length ? `<label>职业 <select id="job-select" aria-label="职业"><option value="">全部职业</option>${selectOptions(jobs, jobFilter)}</select></label>` : ""}<button class="text-btn" data-action="clear-filters">重置筛选</button></div>`
       : ""
-  }<div class="collection-grid ${layout === "list" ? "list-mode" : ""}">${items.length ? items.map(card).join("") : emptyState(view === "wishlist" && !data.wishlist.length ? "心愿单还在等待第一份心动" : "还没有找到这份珍藏", view === "wishlist" && !data.wishlist.length ? "到图鉴逛一逛，点击爱心保存你的收集愿望。" : "试着换个关键词，或放宽一下筛选条件。", view === "wishlist" && !data.wishlist.length ? "browse" : "clear-filters", view === "wishlist" && !data.wishlist.length ? "去探索图鉴" : "清除筛选")}</div>${items.length ? `<p class="catalog-end">${icon("sparkles")} 已展示全部 ${items.length} 件精选藏品 · 更多故事，未完待续</p>` : ""}`;
+  }<div class="collection-grid ${layout === "list" ? "list-mode" : ""}">${items.length ? items.slice(0, visibleLimit).map(card).join("") : emptyState(view === "wishlist" && !data.wishlist.length ? "心愿单还在等待第一份心动" : "还没有找到这份珍藏", view === "wishlist" && !data.wishlist.length ? "到图鉴逛一逛，点击爱心保存你的收集愿望。" : "试着换个关键词，或放宽一下筛选条件。", view === "wishlist" && !data.wishlist.length ? "browse" : "clear-filters", view === "wishlist" && !data.wishlist.length ? "去探索图鉴" : "清除筛选")}</div>${items.length > visibleLimit ? `<button class="load-more" data-action="load-more">${icon("plus")} 再显示 ${Math.min(96, items.length - visibleLimit)} 件 · 已显示 ${visibleLimit} / ${items.length} 件</button>` : ""}${items.length ? `<p class="catalog-end">${icon("sparkles")} 已展示 ${Math.min(visibleLimit, items.length)} / ${items.length} 件藏品</p>` : ""}`;
 }
 function card(x, index) {
-  const isOwned = data.owned.includes(x.key),
-    isWish = data.wishlist.includes(x.key);
-  const color = colors[catalog.indexOf(x) % colors.length];
-  return `<article class="collectible" style="--item-color:${color};animation-delay:${Math.min(index, 9) * 25}ms"><button class="card-heart ${isWish ? "selected" : ""}" data-action="wish-toggle" data-key="${esc(x.key)}" aria-label="${isWish ? "从心愿单移除" : "加入心愿单"}${esc(x.name)}" aria-pressed="${isWish}">${icon("heart")}</button><button class="card-open" data-action="detail" data-key="${esc(x.key)}" aria-label="查看${esc(x.name)}详情"><div class="card-art ${["relics", "ultimates", "tools", "bardings", "cards", "facewear", "fashions", "frames"].includes(x.category) ? "equipment-art" : x.category === "orchestrions" ? "music-art" : x.category === "emotes" ? "emote-art" : ""}"><span class="card-badge ${isOwned ? "owned" : ""}">${isOwned ? icon("check") + " 已收藏" : "PATCH " + x.patch}</span><img src="${esc(x.image)}" alt="${esc(x.name)}" loading="lazy" width="192" height="192"></div><div class="card-info"><h3>${esc(x.name)}</h3><span class="english">${x.name === x.english ? "中文名待核实" : esc(x.english)}</span>${x.series ? `<div class="equipment-tags"><span>${esc(itemJobs(x).join(" / "))}</span><span>${esc(x.series)}</span></div>` : ""}<div class="card-source"><span>${icon(x.sourceType === "商城特典" ? "star" : x.sourceType === "金碟游乐场" ? "trophy" : "compass")} ${esc(x.sourceType)}</span><span>${categories[x.category].name}</span></div></div></button><div class="card-foot"><button class="owned-btn ${isOwned ? "is-owned" : ""}" data-action="owned-toggle" data-key="${esc(x.key)}" aria-pressed="${isOwned}" aria-label="${isOwned ? "取消收藏" : "标记已收藏"}${esc(x.name)}">${icon(isOwned ? "checkcircle" : "circle")} ${isOwned ? "已收入藏馆" : "标记已收藏"}</button><span>NO. ${String(x.id).padStart(3, "0")}</span></div></article>`;
+  const isOwned = ownedKeys.has(x.key),
+    isWish = wishlistKeys.has(x.key);
+  const color = itemColor(x);
+  return `<article class="collectible" style="--item-color:${color};animation-delay:${Math.min(index, 9) * 25}ms"><button class="card-heart ${isWish ? "selected" : ""}" data-action="wish-toggle" data-key="${esc(x.key)}" aria-label="${isWish ? "从心愿单移除" : "加入心愿单"}${esc(x.name)}" aria-pressed="${isWish}">${icon("heart")}</button><button class="card-open" data-action="detail" data-key="${esc(x.key)}" aria-label="查看${esc(x.name)}详情"><div class="card-art ${["relics", "ultimates", "tools", "bardings", "cards", "facewear", "fashions", "frames"].includes(x.category) ? "equipment-art" : x.category === "orchestrions" ? "music-art" : x.category === "emotes" ? "emote-art" : ""}"><span class="card-badge ${isOwned ? "owned" : ""}">${isOwned ? icon("check") + " 已收藏" : "PATCH " + x.patch}</span><img src="${esc(x.image)}" alt="${esc(x.name)}" loading="lazy" width="192" height="192"></div><div class="card-info"><h3>${esc(x.name)}</h3><span class="english">${x.name === x.english ? (x.collect?.data ? "API 名称" : "原始名称") : esc(x.english)}</span>${x.series ? `<div class="equipment-tags"><span>${esc(itemJobs(x).join(" / "))}</span><span>${esc(x.series)}</span></div>` : ""}<div class="card-source"><span>${icon(x.sourceType === "商城特典" ? "star" : x.sourceType === "金碟游乐场" ? "trophy" : "compass")} ${esc(x.sourceType)}</span><span>${categories[x.category].name}</span></div></div></button><div class="card-foot"><button class="owned-btn ${isOwned ? "is-owned" : ""}" data-action="owned-toggle" data-key="${esc(x.key)}" aria-pressed="${isOwned}" aria-label="${isOwned ? "取消收藏" : "标记已收藏"}${esc(x.name)}">${icon(isOwned ? "checkcircle" : "circle")} ${isOwned ? "已收入藏馆" : "标记已收藏"}</button><span>NO. ${String(x.id).padStart(3, "0")}</span></div></article>`;
 }
 function emptyState(title, text, act, label) {
   return `<div class="empty-state">${icon("compass")}<h3>${title}</h3><p>${text}</p><button class="secondary-btn" data-action="${act}">${label} ${icon("arrow")}</button></div>`;
 }
 function progressPage() {
-  return `<div class="page-heading"><div class="eyebrow">EVERY LITTLE STEP COUNTS</div><h2>你的收藏，正在闪闪发光</h2><p>这里只统计本站精选的 ${catalog.length} 件藏品，记录属于你的每一次收获。</p></div><div class="progress-summary">${ring()}<div><h3>已经点亮了 ${countOwned()} 份艾欧泽亚的浪漫</h3><p>${data.profile.demo ? "当前显示演示档案，可在设置中清空后开始记录。" : "每一次相遇，都让你的冒险手记更完整。"}<br>下一份心动或许就在眼前，慢慢收集，也是一种享受。</p></div></div><div class="progress-page-grid">${Object.entries(
+  return `<div class="page-heading"><div class="eyebrow">EVERY LITTLE STEP COUNTS</div><h2>你的收藏，正在闪闪发光</h2><p>这里只统计本站的 ${catalog.length} 件藏品，记录属于你的每一次收获。</p></div><div class="progress-summary">${ring()}<div><h3>已经点亮了 ${countOwned()} 份艾欧泽亚的浪漫</h3><p>${data.profile.demo ? "当前显示演示档案，可在设置中清空后开始记录。" : "每一次相遇，都让你的冒险手记更完整。"}<br>下一份心动或许就在眼前，慢慢收集，也是一种享受。</p></div></div><div class="progress-page-grid">${Object.entries(
     categories,
   )
     .map(([id, c]) => {
@@ -552,9 +573,10 @@ function progressPage() {
 }
 function planPage() {
   const planned = data.plan.map(find).filter(Boolean);
-  return `<div class="page-heading"><div class="eyebrow">A LITTLE PLAN, A NEW ADVENTURE</div><div class="heading-row"><div><h2>下一站，奔赴你的热爱</h2><p>为心愿留一点时间，把遥远的目标变成今天的一小步。</p></div><button class="primary-btn" data-action="planner">${icon("sparkles")} 生成收集计划</button></div></div>${planned.length ? `<div class="plan-list">${planned.map((x, i) => `<article class="plan-row ${data.owned.includes(x.key) ? "completed" : ""}"><span class="plan-num">${String(i + 1).padStart(2, "0")}</span><button class="card-open" style="width:auto;flex:0" data-action="detail" data-key="${esc(x.key)}" aria-label="查看${esc(x.name)}详情"><img class="plan-image" src="${esc(x.image)}" alt="${esc(x.name)}"></button><div class="plan-detail"><h3>${esc(x.name)} <span class="tag">${categories[x.category].name}</span></h3><p>${esc(x.source)}</p><small>${data.owned.includes(x.key) ? "这份珍藏已与你相遇" : "先核对解锁条件，再按自己的节奏推进"}</small></div><div class="plan-actions"><button class="secondary-btn" data-action="owned-toggle" data-key="${esc(x.key)}">${icon(data.owned.includes(x.key) ? "checkcircle" : "circle")} ${data.owned.includes(x.key) ? "已收藏" : "我收集到了"}</button><button class="icon-btn" data-action="plan-toggle" data-key="${esc(x.key)}" aria-label="从计划移除${esc(x.name)}">${icon("trash")}</button></div></article>`).join("")}</div><p class="plan-help">${icon("info")} 推荐依据为本地收藏偏好，不承诺掉落概率或完成时间。规划不会自动操作游戏，也不会同步游戏账号。</p>` : emptyState("为下一次出发，留一点小小的期待", "在藏品详情中加入目标，或根据你的偏好生成专属计划。", "planner", "寻找收藏灵感")}`;
+  return `<div class="page-heading"><div class="eyebrow">A LITTLE PLAN, A NEW ADVENTURE</div><div class="heading-row"><div><h2>下一站，奔赴你的热爱</h2><p>为心愿留一点时间，把遥远的目标变成今天的一小步。</p></div><button class="primary-btn" data-action="planner">${icon("sparkles")} 生成收集计划</button></div></div>${planned.length ? `<div class="plan-list">${planned.map((x, i) => `<article class="plan-row ${ownedKeys.has(x.key) ? "completed" : ""}"><span class="plan-num">${String(i + 1).padStart(2, "0")}</span><button class="card-open" style="width:auto;flex:0" data-action="detail" data-key="${esc(x.key)}" aria-label="查看${esc(x.name)}详情"><img class="plan-image" src="${esc(x.image)}" alt="${esc(x.name)}"></button><div class="plan-detail"><h3>${esc(x.name)} <span class="tag">${categories[x.category].name}</span></h3><p>${esc(x.source)}</p><small>${ownedKeys.has(x.key) ? "这份珍藏已与你相遇" : "先核对解锁条件，再按自己的节奏推进"}</small></div><div class="plan-actions"><button class="secondary-btn" data-action="owned-toggle" data-key="${esc(x.key)}">${icon(ownedKeys.has(x.key) ? "checkcircle" : "circle")} ${ownedKeys.has(x.key) ? "已收藏" : "我收集到了"}</button><button class="icon-btn" data-action="plan-toggle" data-key="${esc(x.key)}" aria-label="从计划移除${esc(x.name)}">${icon("trash")}</button></div></article>`).join("")}</div><p class="plan-help">${icon("info")} 推荐依据为本地收藏偏好，不承诺掉落概率或完成时间。规划不会自动操作游戏，也不会同步游戏账号。</p>` : emptyState("为下一次出发，留一点小小的期待", "在藏品详情中加入目标，或根据你的偏好生成专属计划。", "planner", "寻找收藏灵感")}`;
 }
 function navigate(next) {
+  clearTimeout(searchTimer);
   if (next === "weapons") next = "relics";
   exchangeCurrency = "";
   exchangeExpansion = "";
@@ -584,7 +606,7 @@ function navigate(next) {
 function toggleOwned(key) {
   const item = find(key);
   if (!item) return;
-  const owned = data.owned.includes(key);
+  const owned = ownedKeys.has(key);
   if (owned) data.owned = data.owned.filter((k) => k !== key);
   else {
     data.owned.push(key);
@@ -600,11 +622,11 @@ function toggleOwned(key) {
 function toggleWish(key) {
   const item = find(key);
   if (!item) return;
-  if (data.owned.includes(key)) {
+  if (ownedKeys.has(key)) {
     toast("这件珍藏已经在你的藏馆里啦");
     return;
   }
-  const selected = data.wishlist.includes(key);
+  const selected = wishlistKeys.has(key);
   data.wishlist = selected
     ? data.wishlist.filter((k) => k !== key)
     : [...data.wishlist, key];
@@ -616,7 +638,7 @@ function toggleWish(key) {
 function togglePlan(key) {
   const item = find(key);
   if (!item) return;
-  const selected = data.plan.includes(key);
+  const selected = planKeys.has(key);
   data.plan = selected
     ? data.plan.filter((k) => k !== key)
     : [...data.plan, key];
@@ -644,15 +666,58 @@ function closeModal(restore = true) {
   if (restore && returnFocus?.isConnected) returnFocus.focus();
   else if (restore) $("#global-search")?.focus();
 }
+const apiValuePresent = (value) => value !== undefined && value !== null && value !== "";
+const rawCollectData = (item) => item.collect?.data && typeof item.collect.data === "object" ? item.collect.data : {};
+function apiValueText(value) {
+  if (typeof value === "boolean") return value ? "是" : "否";
+  if (Array.isArray(value)) return value.map(apiValueText).join(" / ");
+  if (value && typeof value === "object") return Object.entries(value).filter(([, v]) => apiValuePresent(v)).map(([k, v]) => `${({ id: "编号", name: "名称", top: "上", right: "右", bottom: "下", left: "左" })[k] || k}：${apiValueText(v)}`).join(" · ");
+  return String(value ?? "");
+}
+function apiFactsHtml(entries) {
+  const facts = entries.filter(([, value]) => apiValuePresent(value));
+  return facts.length ? `<dl class="detail-facts">${facts.map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${esc(apiValueText(value))}</dd></div>`).join("")}</dl>` : "";
+}
+function collectDetailsHtml(x) {
+  const raw = rawCollectData(x), parts = [];
+  const enhanced = x.enhancedDescription ?? raw.enhanced_description;
+  const tooltip = x.tooltip ?? raw.tooltip;
+  if (enhanced && enhanced !== x.description) parts.push(`<section class="detail-source"><h3>背景资料</h3><p class="api-text">${esc(enhanced)}</p></section>`);
+  if (tooltip) parts.push(`<blockquote class="detail-quote">${esc(tooltip)}</blockquote>`);
+  const facts = [["物品 ID", x.itemId ?? raw.item_id ?? (["relics", "ultimates", "tools"].includes(x.category) ? x.id : undefined)], ["编号", x.cardNumber ?? raw.number], ["资料分类", raw.category], ["动作指令", x.command ?? raw.command], ["可交易", raw.tradeable ?? x.tradeable]];
+  if (x.category === "mounts") facts.push(["移动方式", raw.movement], ["座位数", raw.seats], ["自带音乐", raw.custom_music]);
+  if (x.category === "minions") facts.push(["行为", raw.behavior], ["种族", raw.race]);
+  if (x.category === "cards") {
+    const stats = raw.stats?.formatted ?? raw.stats?.numeric ?? x.cardStats;
+    facts.push(["星级", x.stars ?? raw.stars ?? raw.rarity?.stars ?? raw.rarity], ["点数", stats], ["卖价", raw.sell_price ?? raw.sale_price], ["卡牌类型", raw.type]);
+  }
+  const factsHtml = apiFactsHtml(facts);
+  if (factsHtml) parts.push(`<section class="detail-source"><h3>藏品资料</h3>${factsHtml}</section>`);
+  if (raw.verminion && typeof raw.verminion === "object") {
+    const labels = { cost: "召唤成本", attack: "攻击力", defense: "防御力", hp: "生命值", speed: "移动速度", area_attack: "范围攻击", skill: "特殊技", skill_description: "特殊技说明", skill_angle: "技能角度", skill_cost: "特殊技点数", eye: "搜索之眼特效", gate: "传送门特效", shield: "护盾特效", skill_type: "特殊技类型" };
+    parts.push(`<section class="detail-source"><h3>萌宠之王</h3>${apiFactsHtml(Object.entries(raw.verminion).map(([key, value]) => [labels[key] || key, value]))}</section>`);
+  }
+  if (x.category === "frames" && !Array.isArray(raw.sources)) parts.push('<p class="detail-note">FFXIV Collect API 未提供此肖像教材的获取来源；现有来源记录请以游戏内为准。可交易状态等缺失字段属于未知，不代表“否”。</p>');
+  if (!x.collect?.data) parts.push('<p class="detail-note">FFXIV Collect API 尚未覆盖此条目，保留已有资料。</p>');
+  if (x.collect?.data) parts.push(`<details class="detail-raw"><summary>查看完整 API 资料</summary><pre>${esc(JSON.stringify(raw, null, 2))}</pre></details>`);
+  return parts.join("");
+}
+function collectSourcesHtml(x) {
+  const raw = rawCollectData(x);
+  const sources = Array.isArray(raw.sources) ? raw.sources : Array.isArray(x.sourceOriginal) ? x.sourceOriginal : [];
+  if (!sources.length) return "";
+  return `<details><summary>查看原始来源与关联编号</summary>${sources.map(s => `<p>${esc(apiValueText(s.type))} · ${esc(s.text)}${apiValuePresent(s.related_id) ? `<br>关联资料：${esc(s.related_type || "未提供类型")} #${esc(s.related_id)}` : ""}</p>`).join("")}</details>`;
+}
 function openDetail(key, remember = true) {
   const x = find(key);
   if (!x) return;
   modalKey = key;
-  const owned = data.owned.includes(key),
-    wish = data.wishlist.includes(key),
-    plan = data.plan.includes(key);
+  const owned = ownedKeys.has(key),
+    wish = wishlistKeys.has(key),
+    plan = planKeys.has(key);
+  const detailImage = typeof x.previewImage === "string" && /^\/?assets\//.test(x.previewImage) ? x.previewImage : x.image;
   showModal(
-    `<div class="detail-art ${["emotes", "orchestrions", "relics", "ultimates", "tools", "bardings", "cards", "facewear", "fashions", "frames"].includes(x.category) ? "icon-detail" : ""}" style="--item-color:${colors[catalog.indexOf(x) % colors.length]}"><img src="${esc(x.image)}" alt="${esc(x.name)}"></div><div class="detail-content"><span class="tag">${categories[x.category].name} · PATCH ${esc(x.patch)}</span><h2 id="modal-title">${esc(x.name)}</h2><span class="english">${x.name === x.english ? "中文名待核实" : esc(x.english)}</span>${x.series ? `<div class="detail-equipment-meta"><span class="tag">${esc(x.series)}</span><span class="tag">${esc(itemJobs(x).join(" / "))}</span>${x.stage ? `<span class="tag">${esc(x.stage)}</span>` : ""}</div>` : ""}<p class="description">${esc(x.description)}</p><div class="detail-source"><h3>${icon("compass")} 获取途径</h3><p>${esc(x.source)}</p>${x.command ? `<p style="margin-top:7px;color:#bfa87a">动作指令：${esc(x.command)}</p>` : ""}<details><summary>查看原始资料（英文）</summary>${x.sourceOriginal.map((s) => `<p>${esc(s.type)} · ${esc(s.text)}</p>`).join("")}</details></div><div class="detail-meta"><span>${hasOwnedRate(x) ? `社区持有率 ${x.ownedRate}%` : "社区持有率：暂无数据"}</span><span>游戏内编号 #${x.id}</span><a href="${esc(itemSourceUrl(x))}" target="_blank" rel="noopener noreferrer">原始资料 ${icon("external")}</a>${x.nameSource ? `<a href="${esc(x.nameSource)}" target="_blank" rel="noopener noreferrer">中文名依据 ${icon("external")}</a>` : ""}</div><div class="detail-actions"><button class="primary-btn" data-action="owned-toggle" data-key="${esc(x.key)}">${icon(owned ? "checkcircle" : "plus")} ${owned ? "已收藏 · 点击取消" : "标记为已收藏"}</button><button class="secondary-btn" data-action="wish-toggle" data-key="${esc(x.key)}" ${owned ? "disabled" : ""}>${icon("heart")} ${wish ? "移出心愿单" : "加入心愿单"}</button><button class="secondary-btn" data-action="plan-toggle" data-key="${esc(x.key)}">${icon("route")} ${plan ? "移出收集计划" : "加入收集计划"}</button></div><p class="detail-note">资料供规划参考，获取条件以游戏内为准。武器与工具按物品独立记录；系列筛选不代表已收录每一中间强化阶段。中文名称未核实时保留英文。持有率仅在来源提供时显示，不代表掉落率。</p></div>`,
+    `<div class="detail-art ${["emotes", "orchestrions", "relics", "ultimates", "tools", "bardings", "cards", "facewear", "fashions", "frames"].includes(x.category) ? "icon-detail" : ""}" style="--item-color:${itemColor(x)}"><img src="${esc(detailImage)}" alt="${esc(x.name)}"></div><div class="detail-content"><span class="tag">${categories[x.category].name} · PATCH ${esc(x.patch)}</span><h2 id="modal-title">${esc(x.name)}</h2><span class="english">${x.name === x.english ? (x.collect?.data ? "API 名称" : "原始名称") : esc(x.english)}</span>${x.series ? `<div class="detail-equipment-meta"><span class="tag">${esc(x.series)}</span><span class="tag">${esc(itemJobs(x).join(" / "))}</span>${x.stage ? `<span class="tag">${esc(x.stage)}</span>` : ""}</div>` : ""}${x.canonicalName && x.canonicalName !== x.name ? `<p class="detail-canonical">资料库名称：${esc(x.canonicalName)}</p>` : ""}<p class="description">${esc(x.description)}</p>${collectDetailsHtml(x)}<div class="detail-source"><h3>${icon("compass")} 获取途径</h3><p>${esc(x.source)}</p>${x.command ? `<p style="margin-top:7px;color:#bfa87a">动作指令：${esc(x.command)}</p>` : ""}${collectSourcesHtml(x)}</div><div class="detail-meta"><span>${hasOwnedRate(x) ? `社区持有率 ${x.ownedRate}%` : "社区持有率：暂无数据"}</span><span>资料编号 #${x.id}</span><a href="${esc(itemSourceUrl(x))}" target="_blank" rel="noopener noreferrer">原始资料 ${icon("external")}</a>${x.nameSource ? `<a href="${esc(x.nameSource)}" target="_blank" rel="noopener noreferrer">中文名依据 ${icon("external")}</a>` : ""}</div><div class="detail-actions"><button class="primary-btn" data-action="owned-toggle" data-key="${esc(x.key)}">${icon(owned ? "checkcircle" : "plus")} ${owned ? "已收藏 · 点击取消" : "标记为已收藏"}</button><button class="secondary-btn" data-action="wish-toggle" data-key="${esc(x.key)}" ${owned ? "disabled" : ""}>${icon("heart")} ${wish ? "移出心愿单" : "加入心愿单"}</button><button class="secondary-btn" data-action="plan-toggle" data-key="${esc(x.key)}">${icon("route")} ${plan ? "移出收集计划" : "加入收集计划"}</button></div><p class="detail-note">资料供规划参考，获取条件以游戏内为准。武器与工具按物品独立记录；系列筛选不代表已收录每一中间强化阶段。中文名称未核实时保留英文。持有率仅在来源提供时显示，不代表掉落率。</p></div>`,
     "detail",
     "",
     remember,
@@ -672,7 +737,7 @@ function openClearConfirm() {
 }
 function openAbout() {
   showModal(
-    `<div class="simple-modal about-copy"><div class="eyebrow" style="margin-bottom:12px">MADE FOR THE JOURNEY</div><h2 id="modal-title">关于光之藏馆</h2><p>为热爱 FINAL FANTASY XIV 的光之战士制作的非官方收藏手记。本站精选收录 ${catalog.length} 个藏品，并非完整游戏数据库。</p><h3>版本与收录范围</h3><p>最新已发布国际服客户端：${esc(catalogMeta.latestReleasedPatch || "—")}；图鉴包含黄金的遗产 7.x 已可获取的收藏。8.0 Evercold 尚未发售，仅使用已公开的官方预告插画。武器和工具按实际物品记录，覆盖已收录系列的终阶与绝本物品，不等于包含全部强化中间阶段。</p><h3>资料与图片来源</h3><p>条目及社区持有率来自 <a href="https://ffxivcollect.com/" target="_blank" rel="noopener noreferrer">FFXIV Collect</a>，游戏图标来自 <a href="https://v2.xivapi.com/" target="_blank" rel="noopener noreferrer">XIVAPI</a>；背景使用 <a href="https://na.finalfantasyxiv.com/evercold/media/" target="_blank" rel="noopener noreferrer">8.0 Evercold 官方媒体页</a>。资料整理日期：2026 年 11 月 26 日。武器与工具物品资料来自 XIVAPI 游戏数据；未核实中文名的新增条目保留英文原名。条件以游戏内及原始资料为准。</p><h3>智能规划如何工作</h3><p>推荐在浏览器本地完成，根据未收藏条目、心愿单、玩法偏好和目标数量进行排序。没有模型对话，也不需要 API 密钥。时间预算只用于控制计划长度，不是获取耗时估计。</p><h3>你的收藏，属于你</h3><p>数据库连接时档案会自动同步，浏览器同时保留离线备份。注册收藏站账号后可跨浏览器使用，也可导入或导出 JSON 档案。本站不连接游戏账号，不自动同步角色信息。</p><p>© SQUARE ENIX CO., LTD. All Rights Reserved.<br>FINAL FANTASY XIV 及其相关图像、名称归各权利人所有。</p></div>`,
+    `<div class="simple-modal about-copy"><div class="eyebrow" style="margin-bottom:12px">MADE FOR THE JOURNEY</div><h2 id="modal-title">关于光之藏馆</h2><p>为热爱 FINAL FANTASY XIV 的光之战士制作的非官方收藏手记。本站收录 ${catalog.length} 个藏品，并非完整游戏数据库。</p><h3>版本与收录范围</h3><p>最新已发布国际服客户端：${esc(catalogMeta.latestReleasedPatch || "—")}；图鉴按 API 列表整理，活动开放与实际可获取状态以游戏内为准。8.0 Evercold 尚未发售，仅使用已公开的官方预告插画。武器和工具按实际物品记录，覆盖已收录系列的终阶与绝本物品，不等于包含全部强化中间阶段。</p><h3>资料与图片来源</h3><p>条目及社区持有率来自 <a href="https://ffxivcollect.com/" target="_blank" rel="noopener noreferrer">FFXIV Collect</a>，游戏图标来自 <a href="https://v2.xivapi.com/" target="_blank" rel="noopener noreferrer">XIVAPI</a>；背景使用 <a href="https://na.finalfantasyxiv.com/evercold/media/" target="_blank" rel="noopener noreferrer">8.0 Evercold 官方媒体页</a>。API 资料同步时间：${esc(catalogUpdatedAt())}。武器与工具物品资料来自 XIVAPI 游戏数据；未核实中文名的新增条目保留英文原名。条件以游戏内及原始资料为准。</p><h3>智能规划如何工作</h3><p>推荐在浏览器本地完成，根据未收藏条目、心愿单、玩法偏好和目标数量进行排序。没有模型对话，也不需要 API 密钥。时间预算只用于控制计划长度，不是获取耗时估计。</p><h3>你的收藏，属于你</h3><p>数据库连接时档案会自动同步，浏览器同时保留离线备份。注册收藏站账号后可跨浏览器使用，也可导入或导出 JSON 档案。本站不连接游戏账号，不自动同步角色信息。</p><p>© SQUARE ENIX CO., LTD. All Rights Reserved.<br>FINAL FANTASY XIV 及其相关图像、名称归各权利人所有。</p></div>`,
     "about",
   );
 }
@@ -725,7 +790,7 @@ function renderPlanner() {
 function generatePlan(p) {
   let pool = catalog.filter(
     (x) =>
-      !data.owned.includes(x.key) &&
+      !ownedKeys.has(x.key) &&
       (p.category === "all" || x.category === p.category) &&
       (!p.excludePaid || !x.premium),
   );
@@ -748,7 +813,7 @@ function generatePlan(p) {
   return pool
     .map((x, i) => {
       let score =
-        1 + (p.prioritizeWish && data.wishlist.includes(x.key) ? 80 : 0);
+        1 + (p.prioritizeWish && wishlistKeys.has(x.key) ? 80 : 0);
       if (p.style === "casual")
         score +=
           ({
@@ -781,7 +846,7 @@ function renderRecommendations() {
   const items = generated.map(find).filter(Boolean),
     p = data.preferences;
   showModal(
-    `<div class="simple-modal recommendation-modal"><div class="eyebrow" style="margin-bottom:12px">YOUR NEXT CHAPTER</div><h2 id="modal-title">为今天的你，挑好了这些珍藏</h2><p class="muted">${p.style === "solo" ? "独自出发" : p.style === "challenge" ? "挑战珍藏" : "轻松收藏"} · ${esc(p.budget)} 分钟规划 · ${items.length} 个目标<br>基于你的未收藏条目${p.prioritizeWish ? "与心愿清单" : ""}，在本机完成推荐。</p>${items.length ? `<div class="recommendation-list">${items.map((x, i) => `<article class="recommendation-item"><span class="recommendation-number">0${i + 1}</span><img src="${esc(x.image)}" alt="${esc(x.name)}"><div><h3>${esc(x.name)} ${data.wishlist.includes(x.key) ? '<span class="tag">心愿优先</span>' : ""}</h3><p>${esc(x.source)}</p><small>${p.style === "solo" ? "先检查解锁前置与所需货币" : p.style === "challenge" ? "按当前进度准备条件，掉落结果具有随机性" : "优先推进已有任务或货币接近的目标"}</small></div></article>`).join("")}</div><div class="planner-result-note">${icon("info")} 时间预算用于控制目标数量，不承诺完成时间。实际解锁条件与获取方式请核对游戏内资料。</div><div class="planner-submit"><button class="text-btn" data-action="planner">${icon("refresh")} 调整偏好</button><button class="primary-btn" data-action="accept-plan">${icon("plus")} 加入我的收集计划</button></div>` : emptyState("这一页，暂时没有新的目标", "可以调整分类或获取方式，再寻找新的收藏灵感。", "planner", "调整偏好")}</div>`,
+    `<div class="simple-modal recommendation-modal"><div class="eyebrow" style="margin-bottom:12px">YOUR NEXT CHAPTER</div><h2 id="modal-title">为今天的你，挑好了这些珍藏</h2><p class="muted">${p.style === "solo" ? "独自出发" : p.style === "challenge" ? "挑战珍藏" : "轻松收藏"} · ${esc(p.budget)} 分钟规划 · ${items.length} 个目标<br>基于你的未收藏条目${p.prioritizeWish ? "与心愿清单" : ""}，在本机完成推荐。</p>${items.length ? `<div class="recommendation-list">${items.map((x, i) => `<article class="recommendation-item"><span class="recommendation-number">0${i + 1}</span><img src="${esc(x.image)}" alt="${esc(x.name)}"><div><h3>${esc(x.name)} ${wishlistKeys.has(x.key) ? '<span class="tag">心愿优先</span>' : ""}</h3><p>${esc(x.source)}</p><small>${p.style === "solo" ? "先检查解锁前置与所需货币" : p.style === "challenge" ? "按当前进度准备条件，掉落结果具有随机性" : "优先推进已有任务或货币接近的目标"}</small></div></article>`).join("")}</div><div class="planner-result-note">${icon("info")} 时间预算用于控制目标数量，不承诺完成时间。实际解锁条件与获取方式请核对游戏内资料。</div><div class="planner-submit"><button class="text-btn" data-action="planner">${icon("refresh")} 调整偏好</button><button class="primary-btn" data-action="accept-plan">${icon("plus")} 加入我的收集计划</button></div>` : emptyState("这一页，暂时没有新的目标", "可以调整分类或获取方式，再寻找新的收藏灵感。", "planner", "调整偏好")}</div>`,
     "recommendations",
   );
 }
@@ -805,6 +870,11 @@ document.addEventListener("click", (event) => {
     key = el.dataset.key;
   if (a === "backdrop") {
     if (event.target === el) closeModal();
+    return;
+  }
+  if (a === "load-more") {
+    const previous = visibleLimit; visibleLimit += 96; renderCatalog();
+    $(".collection-grid")?.querySelectorAll(".card-open")[previous]?.focus();
     return;
   }
   if (a === "navigate") return navigate(el.dataset.view);
@@ -890,6 +960,7 @@ document.addEventListener("click", (event) => {
     return;
   }
   if (a === "clear-filters") {
+    clearTimeout(searchTimer);
     exchangeCurrency = "";
     exchangeExpansion = "";
     exchangeRegion = "";
@@ -903,7 +974,7 @@ document.addEventListener("click", (event) => {
     if (input) input.value = "";
     if (view === "explore") {
       renderMain();
-      $(".page-heading p").textContent = "浏览全部精选藏品 · 支持中文、英文及获取途径";
+      $(".page-heading p").textContent = "浏览全部藏品 · 支持中文、英文及获取途径";
     } else {
       renderCatalog();
     }
@@ -931,7 +1002,7 @@ document.addEventListener("click", (event) => {
   if (a === "planner") return openPlanner();
   if (a === "quick-plan") return openPlanner(el.dataset.style);
   if (a === "accept-plan") {
-    const count = generated.filter((k) => !data.plan.includes(k)).length;
+    const count = generated.filter((k) => !planKeys.has(k)).length;
     data.plan = [...new Set([...data.plan, ...generated])];
     save("为下一次出发制定了收集计划");
     navigate("plan");
@@ -943,9 +1014,8 @@ document.addEventListener("click", (event) => {
     return;
   }
 });
-document.addEventListener("input", (event) => {
-  if (event.target.id !== "global-search") return;
-  query = event.target.value.trim();
+function applySearch(input) {
+  query = input.value.trim();
   view = "explore";
   category = "all";
   status = "all";
@@ -959,6 +1029,21 @@ document.addEventListener("input", (event) => {
     el.classList.remove("active");
     el.removeAttribute("aria-current");
   });
+}
+function scheduleSearch(input) {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => applySearch(input), 150);
+}
+document.addEventListener("compositionstart", (event) => {
+  if (event.target.id !== "global-search") return;
+  searchComposing = true; clearTimeout(searchTimer);
+});
+document.addEventListener("compositionend", (event) => {
+  if (event.target.id !== "global-search") return;
+  searchComposing = false; scheduleSearch(event.target);
+});
+document.addEventListener("input", (event) => {
+  if (event.target.id === "global-search" && !event.isComposing && !searchComposing) scheduleSearch(event.target);
 });
 document.addEventListener("change", async (event) => {
   if (["exchange-currency", "exchange-expansion", "exchange-region"].includes(event.target.id)) {
@@ -1128,6 +1213,7 @@ async function init() {
     }
     catalog = json.items;
     catalogMeta = json.meta || {};
+    rebuildCatalogIndexes();
     let stored;
     try {
       stored = JSON.parse(localStorage.getItem(storageKey));

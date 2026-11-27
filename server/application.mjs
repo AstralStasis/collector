@@ -2,6 +2,8 @@ import http from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID, timingSafeEqual } from "node:crypto";
+import { gzip } from "node:zlib";
+import { promisify } from "node:util";
 import { createStore } from "./store.mjs";
 import { ApiError, invalid } from "./errors.mjs";
 import { credentials, revisionOf } from "./validation.mjs";
@@ -9,6 +11,19 @@ import { hashPassword, verifyPassword } from "./auth.mjs";
 const cookieName="eorzea_session";
 const mime={".html":"text/html; charset=utf-8",".js":"text/javascript; charset=utf-8",".css":"text/css; charset=utf-8",".json":"application/json; charset=utf-8",".webp":"image/webp",".png":"image/png",".jpg":"image/jpeg",".svg":"image/svg+xml"};
 function json(res,status,body,headers={}) { res.writeHead(status,{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store",...headers});res.end(JSON.stringify(body)); }
+const compressCatalog=promisify(gzip);
+function acceptsGzip(header="") {
+  let accepted=false;
+  for(const entry of header.split(",")){
+    const [encoding,...parameters]=entry.trim().split(";");
+    if(encoding.trim().toLowerCase()!=="gzip")continue;
+    const quality=parameters.find(value=>/^\s*q(?:\s*=|$)/i.test(value));
+    const match=quality===undefined?null:/^\s*q\s*=\s*(0(?:\.\d{0,3})?|1(?:\.0{0,3})?)\s*$/i.exec(quality);
+    if(quality!==undefined&&(!match||Number(match[1])===0))return false;
+    accepted=true;
+  }
+  return accepted;
+}
 function cookies(req) {
   const result={};for(const p of (req.headers.cookie ?? "").split(";")){const i=p.indexOf("=");if(i>0)try{result[p.slice(0,i).trim()]=decodeURIComponent(p.slice(i+1).trim());}catch{}}
   return result;
@@ -27,6 +42,17 @@ const safeEqual=(a,b)=>typeof a==="string"&&typeof b==="string"&&Buffer.byteLeng
 export async function createApplication({root,databasePath=path.join(root,"data/eorzea.sqlite"),databaseConfig,publicOrigin="",secureCookies=false,logger=console,authLimit=20}={}) {
   const store=await createStore(databaseConfig ?? {client:"sqlite",filename:databasePath});
   try{await store.seedCatalog(JSON.parse(await readFile(path.join(root,"catalog.json"),"utf8")));}catch(error){await store.close();throw error;}
+  // Keep one public full-catalog representation; filtered queries are never retained.
+  let catalogResponse;
+  const sendCatalog=async(req,res,items)=>{
+    const catalog=store.catalog,full=items===catalog.items;
+    if(catalogResponse?.catalog!==catalog)catalogResponse=undefined;
+    const representation=full?(catalogResponse??={catalog,text:JSON.stringify({meta:catalog.meta,items,count:items.length})}):{text:JSON.stringify({meta:catalog.meta,items,count:items.length})};
+    const compressed=acceptsGzip(req.headers["accept-encoding"]);
+    const payload=compressed?await(representation.gzip??=compressCatalog(representation.text)):representation.text;
+    res.writeHead(200,{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store","Vary":"Accept-Encoding",...(compressed?{"Content-Encoding":"gzip"}:{})});
+    res.end(payload);
+  };
   const attempts=new Map();
   const allowAuth=(req)=>{
     const key=req.socket.remoteAddress ?? "unknown",now=Date.now();
@@ -70,7 +96,7 @@ export async function createApplication({root,databasePath=path.join(root,"data/
       const currency=url.searchParams.get("currency"),region=url.searchParams.get("region"),expansion=url.searchParams.get("expansion");
       if(currency||region||expansion)items=items.filter(x=>x.exchangeExclusive&&(x.exchanges??[]).some(e=>(!currency||e.currency===currency)&&(!region||e.region===region)&&(!expansion||e.expansion===expansion)));
       if(q)items=items.filter(x=>[x.name,x.english,x.source,x.sourceEnglish,x.series,x.seriesAlias,x.job,x.jobAbbr].join(" ").toLocaleLowerCase().includes(q));
-      return json(res,200,{meta:store.catalog.meta,items,count:items.length});
+      return sendCatalog(req,res,items);
     }
     const itemMatch=pathname.match(/^\/api\/catalog\/([a-z]+-\d+)$/);
     if(itemMatch&&method==="GET"){const item=store.catalog.items.find(x=>x.key===itemMatch[1]);if(!item)throw new ApiError(404,"item_not_found","图鉴条目不存在。");return json(res,200,item);}

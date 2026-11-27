@@ -10,7 +10,9 @@
     "db:migrate": "node scripts/database.mjs migrate",
     "db:seed": "node scripts/database.mjs seed",
     "db:backup": "node scripts/database.mjs backup",
-    "db:health": "node scripts/database.mjs health"
+    "db:health": "node scripts/database.mjs health",
+    "catalog:sync": "node scripts/sync-collect-catalog.mjs",
+    "catalog:assets": "node scripts/sync-collect-assets.mjs --catalog catalog.json"
   },
   "engines": {
     "node": ">=22.16.0"
