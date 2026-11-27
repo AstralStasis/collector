@@ -1,0 +1,21 @@
+{
+  "name": "eorzea-archive",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "check": "node scripts/check.mjs",
+    "test": "node --test",
+    "db:migrate": "node scripts/database.mjs migrate",
+    "db:seed": "node scripts/database.mjs seed",
+    "db:backup": "node scripts/database.mjs backup",
+    "db:health": "node scripts/database.mjs health"
+  },
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "dependencies": {
+    "mysql2": "^3.24.6"
+  }
+}

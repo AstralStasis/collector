@@ -1,0 +1,12 @@
+﻿node_modules/
+.env
+.env.*
+!.env.example
+data/
+*.sqlite
+*.sqlite-*
+*.log
+coverage/
+
+# Local deployment runbook; keep out of GitHub.
+/docs/BAOTA-DEPLOY.zh-CN.md

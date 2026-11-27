@@ -1,193 +1,26 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#f5f2ed" />
-  <title>艾欧泽亚收藏册</title>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700;900&display=swap');
-    :root{--paper:#f5f2ed;--white:#fffefa;--ink:#262520;--muted:#858279;--line:#e9e5dc;--gold:#b88749;--gold-pale:#f2e9d9;--olive:#75816a;--red:#bb6656;--nav:#303b35;--shadow:0 15px 50px rgba(57,48,33,.06);--serif:'Noto Serif SC',Georgia,serif;--sans:'DM Sans','Microsoft YaHei',sans-serif;--mono:'DM Mono',monospace}
-    *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px}button,input,select{font:inherit}button{cursor:pointer}a{color:inherit;text-decoration:none}.app-shell{max-width:1440px;min-height:100vh;margin:auto;padding:0 42px 56px}.topbar{height:78px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:13px}.brand>span:last-child{display:block}.brand-name,.brand-sub{display:block}.brand-mark{width:32px;height:32px;display:grid;place-items:center;background:var(--nav);color:#f1d29b;border-radius:50%;font:18px var(--serif)}.brand-name{font:600 13px var(--mono);letter-spacing:.11em}.brand-sub{font-size:10px;color:var(--muted);letter-spacing:.14em;margin-top:3px}.top-actions{display:flex;align-items:center;gap:18px}.sync-label{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11px}.sync-dot{width:7px;height:7px;border-radius:50%;background:var(--olive)}.top-link{font-size:12px;color:#5e5a51}.top-link:hover{color:var(--gold)}.avatar{width:34px;height:34px;border-radius:50%;background:#e9ddc5;color:#846640;display:grid;place-items:center;font:14px var(--serif)}
-    .hero{position:relative;display:flex;align-items:center;justify-content:space-between;min-height:243px;padding:34px 42px 34px 48px;margin:28px 0 25px;overflow:hidden;border-radius:8px;background:#303b35;color:#f8f4eb}.hero:after{content:"";position:absolute;width:370px;height:370px;border:1px solid rgba(226,203,164,.13);border-radius:50%;right:53px;top:-94px;box-shadow:0 0 0 34px rgba(0,0,0,0),0 0 0 35px rgba(226,203,164,.08),0 0 0 70px rgba(0,0,0,0),0 0 0 71px rgba(226,203,164,.055)}.hero:before{content:"✳";position:absolute;right:185px;top:36px;font-size:100px;color:#d3b37f;opacity:.75;transform:rotate(-13deg)}.hero-copy{position:relative;z-index:1}.eyebrow{font:10px var(--mono);letter-spacing:.18em;text-transform:uppercase;color:#cdb27f}.hero h1{font:600 33px/1.55 var(--serif);letter-spacing:.03em;margin:10px 0 8px}.hero p{color:#c1c1b4;font-size:12px;letter-spacing:.03em;margin:0}.hero-right{position:relative;z-index:1;display:flex;align-items:flex-end;gap:31px;margin-right:18px}.hero-stat{min-width:75px}.hero-stat strong{display:block;font:32px var(--mono);color:#f0d7aa}.hero-stat span{display:block;color:#c4c0b5;font-size:10px;letter-spacing:.09em;margin-top:6px}.hero-rule{height:47px;width:1px;background:#687068;margin-bottom:2px}
-    .workspace{display:grid;grid-template-columns:228px minmax(0,1fr);gap:24px;align-items:start}.sidebar{padding:20px 16px 22px;background:var(--white);border:1px solid var(--line);border-radius:7px;min-height:590px}.side-heading{display:flex;align-items:center;justify-content:space-between;color:#a09b90;font:10px var(--mono);letter-spacing:.13em;padding:2px 8px 13px}.side-heading button{border:0;background:none;color:#8d887e;font-size:17px}.side-link{width:100%;height:37px;padding:0 11px;display:flex;align-items:center;gap:10px;border:0;border-radius:4px;background:transparent;text-align:left;color:#67645d;font-size:12px;margin:2px 0}.side-link:hover{background:#f6f3ec}.side-link.active{background:#f2ede3;color:#755b35;font-weight:600}.side-icon{width:17px;text-align:center;font-size:14px;color:#a18b66}.side-count{margin-left:auto;color:#aaa59b;font:10px var(--mono)}.side-divider{height:1px;background:var(--line);margin:13px 5px 15px}.side-small{padding:4px 9px 8px;color:#aaa59b;font:9px var(--mono);letter-spacing:.15em}.side-foot{margin-top:29px;padding:14px 10px;border-top:1px solid var(--line);color:#969188;font-size:10px;line-height:1.8}.side-foot b{color:#67645d;font-weight:500}
-    .main{min-width:0}.main-head{display:flex;justify-content:space-between;align-items:flex-end;margin:3px 0 19px}.main-title h2{font:600 21px var(--serif);margin:0 0 6px}.main-title p{margin:0;color:var(--muted);font-size:11px}.mode-switch{display:flex;padding:3px;background:#eae6de;border-radius:5px;gap:2px}.mode-switch button{border:0;background:transparent;color:#817c72;padding:8px 13px;border-radius:3px;font-size:11px}.mode-switch button.active{background:var(--white);color:#554734;box-shadow:0 1px 3px #d8d2c8;font-weight:600}.search-panel{display:flex;align-items:center;gap:10px;padding:12px;background:var(--white);border:1px solid var(--line);border-radius:6px;margin-bottom:14px}.search-icon{font-size:18px;color:#a59e90;padding:0 3px 0 7px}.search-panel input{min-width:0;flex:1;border:0;outline:0;background:transparent;color:var(--ink);font-size:12px}.search-panel input::placeholder{color:#a6a197}.search-category{border:0;border-left:1px solid var(--line);outline:0;background:transparent;color:#777167;padding:0 10px;font-size:11px}.search-btn{border:0;border-radius:4px;background:#303b35;color:#f4ead9;padding:10px 17px;font-size:11px;letter-spacing:.03em}.search-btn:hover{background:#46554b}.filters{display:flex;align-items:center;justify-content:space-between;margin:18px 2px 12px}.filter-left{display:flex;align-items:center;gap:8px}.filter-chip{border:1px solid transparent;background:transparent;color:#8c877d;padding:6px 11px;border-radius:99px;font-size:10px}.filter-chip.active{border-color:#e5dccb;background:#f0e9dc;color:#725936}.result-count{color:#99948a;font:10px var(--mono)}
-    .notice{display:flex;align-items:flex-start;gap:9px;border:1px solid #eee5d6;background:#fcf9f2;border-radius:5px;color:#827663;padding:10px 12px;margin:0 0 13px;font-size:10px;line-height:1.65}.notice-mark{color:var(--gold);font-size:13px}.item-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px}.item-card{position:relative;min-width:0;background:var(--white);border:1px solid var(--line);border-radius:6px;padding:13px 13px 12px;transition:transform .16s,border-color .16s,box-shadow .16s}.item-card:hover{transform:translateY(-2px);border-color:#d8c8aa;box-shadow:var(--shadow)}.card-top{display:flex;align-items:flex-start;gap:11px;min-height:55px}.item-art{flex:0 0 43px;width:43px;height:43px;border-radius:5px;display:grid;place-items:center;overflow:hidden;background:linear-gradient(145deg,#e8e0cf,#f4efe4);color:#8c7652;font-size:20px}.item-art img{width:100%;height:100%;object-fit:cover;image-rendering:pixelated}.item-info{min-width:0;padding-top:2px}.item-info h3{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600;margin:0 0 7px}.item-info p{margin:0;color:#a19b90;font:9px var(--mono)}.card-bottom{display:flex;align-items:center;justify-content:space-between;border-top:1px solid #f0ede6;margin-top:10px;padding-top:9px}.category-tag{color:#928b7e;font-size:9px}.add-button{border:1px solid #e6e0d4;border-radius:3px;background:transparent;color:#766a56;padding:5px 8px;font-size:9px}.add-button:hover,.add-button.saved{border-color:#d7c29d;background:#f6f0e5;color:#796039}.empty{grid-column:1/-1;text-align:center;padding:58px 16px;background:var(--white);border:1px dashed #ddd6ca;border-radius:6px;color:#888277}.empty .empty-icon{font-size:25px;color:#bbab8c}.empty h3{font:500 15px var(--serif);color:#5c584f;margin:12px 0 7px}.empty p{font-size:11px;margin:0 0 16px}.empty button{border:0;background:#303b35;border-radius:4px;color:#f2e8d5;padding:9px 15px;font-size:10px}.loading{grid-column:1/-1;text-align:center;padding:45px 0;color:#8c887e;font-size:11px}.api-foot{display:flex;align-items:center;justify-content:space-between;margin-top:17px;color:#a09a90;font-size:9px}.api-foot a{color:#85724f;border-bottom:1px solid #d6c7ac;padding-bottom:1px}
-    .player-panel{display:flex;justify-content:space-between;align-items:center;gap:15px;background:#ebe8df;border-radius:5px;padding:13px 15px;margin-top:23px}.player-copy strong{display:block;color:#4f4c44;font-size:11px;font-weight:600;margin-bottom:4px}.player-copy span{font-size:10px;color:#8e897e}.player-action{border:1px solid #d7d0c2;background:var(--white);color:#696154;border-radius:4px;padding:8px 12px;font-size:10px;white-space:nowrap}.player-action:hover{border-color:#bfa77c;color:#755e37}.footer{display:flex;justify-content:space-between;color:#aaa49a;font-size:9px;margin-top:28px}.toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,15px);padding:10px 17px;background:#303b35;color:#f7f1e6;font-size:11px;border-radius:5px;opacity:0;pointer-events:none;transition:.2s;z-index:5;box-shadow:var(--shadow)}.toast.show{opacity:1;transform:translate(-50%,0)}.mobile-menu{display:none}
-    @media(max-width:1000px){.app-shell{padding:0 22px 40px}.workspace{grid-template-columns:195px minmax(0,1fr);gap:16px}.item-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.hero{padding-left:33px}.hero-right{margin-right:0}.hero:after{right:-60px}}
-    @media(max-width:680px){.app-shell{padding:0 14px 30px}.topbar{height:63px}.topbar .sync-label,.top-link{display:none}.brand-name{font-size:11px}.hero{min-height:0;margin:18px 0;padding:23px 20px 18px;align-items:flex-start;flex-direction:column;gap:13px}.hero h1{font-size:25px}.hero p{max-width:240px;line-height:1.7}.hero-right{position:relative;right:auto;bottom:auto;align-self:flex-start;gap:16px;margin:0}.hero-stat{min-width:56px}.hero-stat strong{font-size:23px}.hero-stat span{font-size:8px}.hero-rule{height:34px}.hero:before{right:46px;top:13px;font-size:70px}.hero:after{right:-180px;top:-121px}.workspace{display:block}.sidebar{display:none;min-height:0;padding:12px;margin-bottom:13px}.sidebar.open{display:block}.side-foot{display:none}.mobile-menu{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--white);color:#756a57;border-radius:4px;padding:7px 9px;font-size:10px}.main-head{align-items:center;margin:0 0 14px}.main-title h2{font-size:18px}.main-title p{font-size:10px}.mode-switch button{padding:7px 9px;font-size:10px}.search-panel{gap:5px;padding:9px}.search-panel input{font-size:11px}.search-category{max-width:95px;padding:0 5px;font-size:10px}.search-btn{padding:9px 10px;font-size:10px}.filter-chip{padding:5px 8px;font-size:9px}.filter-left{gap:2px}.item-grid{gap:8px}.item-card{padding:10px}.item-art{width:37px;height:37px;flex-basis:37px}.card-top{gap:8px;min-height:47px}.item-info h3{font-size:11px}.notice{font-size:9px}.player-panel{align-items:flex-start;padding:12px;gap:8px}.player-copy span{line-height:1.6}.player-action{padding:7px 8px;font-size:9px}.footer{font-size:8px}.api-foot{font-size:8px}}
-    @media(max-width:380px){.item-grid{grid-template-columns:1fr}.hero h1{font-size:22px}.hero-right{gap:8px}}
-    @media(max-width:380px){.item-grid{grid-template-columns:1fr}.hero h1{font-size:22px}.hero-right{gap:8px}.hero-stat strong{font-size:20px}}
-    .filter-left{min-width:0;overflow-x:auto;max-width:calc(100vw - 112px);scrollbar-width:none;flex-wrap:nowrap}.filter-left::-webkit-scrollbar{display:none}.filter-chip{white-space:nowrap;flex:0 0 auto}
-  </style>
-</head>
-<body>
-  <div class="app-shell">
-    <header class="topbar">
-      <a class="brand" href="#" aria-label="艾欧泽亚收藏册首页"><span class="brand-mark">✳</span><span><span class="brand-name">艾欧泽亚</span><span class="brand-sub">收藏册</span></span></a>
-      <div class="top-actions"><span class="sync-label"><i class="sync-dot"></i><span id="syncStatus">本地收藏已就绪</span></span><a class="top-link" href="https://ff14risingstones.web.sdo.com/pc/index.html#/post" target="_blank" rel="noopener noreferrer">玩家社区 ↗</a><span class="avatar" aria-hidden="true">旅</span></div>
-    </header>
-    <section class="hero" aria-label="收藏册概况">
-      <div class="hero-copy"><div class="eyebrow">✦ &nbsp; 记录每一段冒险旅程</div><h1>把旅途中的心动<br />一件一件收藏。</h1><p>坐骑、宠物、乐谱与发型，慢慢补全你的艾欧泽亚图鉴。</p></div>
-      <div class="hero-right"><div class="hero-stat"><strong id="totalCount">00</strong><span>已收藏</span></div><div class="hero-rule"></div><div class="hero-stat"><strong id="categoryCount">09</strong><span>收藏分类</span></div></div>
-    </section>
-    <div class="workspace">
-      <aside class="sidebar" id="sidebar">
-        <div class="side-heading"><span>收藏分类</span><button id="exportBtn" title="导出收藏清单" aria-label="导出收藏清单">↥</button></div>
-        <button class="side-link active" data-category="all"><span class="side-icon">◈</span>全部收藏<span class="side-count" data-count="all">0</span></button>
-        <div class="side-divider"></div><div class="side-small">藏品类型</div>
-        <div id="categoryNav"></div>
-        <div class="side-divider"></div><div class="side-small">特别分类</div>
-        <button class="side-link" data-category="limited"><span class="side-icon">✧</span>绝版兑换<span class="side-count" data-count="limited">0</span></button>
-        <div class="side-foot"><b>只属于你的冒险笔记。</b><br />收藏保存在当前浏览器，可随时导出备份。</div>
-      </aside>
-      <main class="main">
-        <div class="main-head">
-          <div class="main-title"><h2 id="sectionTitle">物品图鉴</h2><p id="sectionSubtitle">搜索游戏物品，加入你的收藏册。</p></div>
-          <div style="display:flex;align-items:center;gap:8px"><button class="mobile-menu" id="mobileMenu" aria-expanded="false">☷ 分类</button><div class="mode-switch" role="tablist" aria-label="显示模式"><button class="active" id="catalogMode" role="tab" aria-selected="true">物品图鉴</button><button id="collectionMode" role="tab" aria-selected="false">我的收藏</button></div></div>
-        </div>
-        <form class="search-panel" id="searchForm"><span class="search-icon" aria-hidden="true">⌕</span><input id="searchInput" type="search" value="陆行鸟" placeholder="搜索物品名称…" aria-label="搜索物品名称" /><select class="search-category" id="searchCategory" aria-label="收藏分类"></select><button class="search-btn" type="submit">搜索物品</button></form>
-        <div class="notice"><span class="notice-mark">ⓘ</span><span>物品资料来自公开游戏数据接口；选择分类后，可把搜索结果加入本地收藏。角色是否拥有某件物品，无法通过未登录的公开页面核实；这里的收藏标记仅代表你在清单中的记录。</span></div>
-        <div class="filters"><div class="filter-left" id="filterChips"></div><span class="result-count" id="resultCount">等待搜索</span></div>
-        <section class="item-grid" id="itemGrid" aria-live="polite"></section>
-        <div class="api-foot"><span id="apiStatus">物品数据服务：按需查询</span><a href="https://v2.xivapi.com/docs" target="_blank" rel="noopener noreferrer">查看数据接口说明 ↗</a></div>
-        <section class="player-panel"><div class="player-copy"><strong>想核对角色资料？</strong><span>前往玩家社区登录并查看角色绑定；本收藏册不会读取或保存你的社区帐号凭证。</span></div><a class="player-action" href="https://ff14risingstones.web.sdo.com/pc/index.html#/post" target="_blank" rel="noopener noreferrer">打开玩家社区 ↗</a></section>
-      </main>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0c1219" />
+    <meta
+      name="description"
+      content="光之藏馆：为光之战士打造的 FF14 收藏图鉴、心愿清单与智能收集规划助手。"
+    />
+    <title>光之藏馆 · 让每一次冒险都有所珍藏</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="style.css" />
+    <script src="app.js" type="module"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳到主要内容</a>
+    <div id="app">
+      <div class="boot-screen">
+        <span class="boot-star">✧</span> 正在翻开你的艾欧泽亚藏书…
       </div>
-    <footer class="footer"><span>艾欧泽亚收藏册 · 玩家自制收藏工具</span><span>非官方工具 · 物品资料来自公开游戏数据</span></footer>
-  </div>
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script>
-    (() => {
-      const API = 'https://v2.xivapi.com/api/search';
-      const STORAGE_KEY = 'eorzea-archive-items-v1';
-      const categories = [
-        { id:'mount', label:'坐骑', icon:'♞' },
-        { id:'pet', label:'宠物', icon:'♧' },
-        { id:'barding', label:'陆行鸟装备', icon:'◇' },
-        { id:'orchestrion', label:'乐谱', icon:'♫' },
-        { id:'card', label:'九宫幻卡', icon:'▧' },
-        { id:'hair', label:'发型', icon:'✿' },
-        { id:'face', label:'面部配饰', icon:'◉' },
-        { id:'fashion', label:'时尚配饰', icon:'✧' }
-      ];
-      const searchAliases = {'陆行鸟':'chocobo','陆行鸟装备':'chocobo barding','坐骑':'mount','宠物':'minion','乐谱':'orchestrion roll','九宫幻卡':'triple triad card','发型':'hairstyle','面部配饰':'facewear','时尚配饰':'fashion accessory','绝版兑换':'limited item'};
-      const nameTranslations = {'chocobo fly':'陆行鸟飞行','chocobo mask':'陆行鸟面具','chocobo suit':'陆行鸟装束','chocobo card':'陆行鸟卡片','chocobo chair':'陆行鸟椅','chocobo brush':'陆行鸟毛刷','chocobo pillar':'陆行鸟柱','chocobo stable':'陆行鸟栏舍','chocobotail saw':'陆行鸟尾锯','chocobo egg cap':'陆行鸟蛋帽','chocobo feather':'陆行鸟羽毛','chocobo whistle':'陆行鸟口哨','stuffed chocobo':'陆行鸟玩偶','topiary chocobo':'陆行鸟造型树','chocobo pajamas':'陆行鸟睡衣','chocobo egg ring':'陆行鸟蛋戒指','chocobo flooring':'陆行鸟地板','fat chocobo head':'胖陆行鸟头饰'};
-      const emojiFor = {mount:'♞',pet:'♧',barding:'◇',orchestrion:'♫',card:'▧',hair:'✿',face:'◉',fashion:'✧',limited:'✦'};
-      const state = { mode:'catalog', category:'all', results:[], loading:false, query:'陆行鸟', searchCategory:'mount', lastError:'' };
-      const $ = (s) => document.querySelector(s);
-      const grid = $('#itemGrid');
-      const categoryById = (id) => categories.find(c => c.id === id) || {id:'limited',label:'绝版兑换',icon:emojiFor.limited};
-      let owned = loadOwned();
-      function loadOwned(){ try { const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); return Array.isArray(parsed) ? parsed : []; } catch { return []; } }
-      function persist(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(owned)); renderStats(); renderNavCounts(); }
-      function renderStats(){ $('#totalCount').textContent = String(owned.length).padStart(2,'0'); $('#categoryCount').textContent = String(categories.length + 1).padStart(2,'0'); }
-      function renderNav(){
-        $('#categoryNav').innerHTML = categories.map(c => `<button class="side-link" data-category="${c.id}"><span class="side-icon">${c.icon}</span>${c.label}<span class="side-count" data-count="${c.id}">0</span></button>`).join('');
-        $('#searchCategory').innerHTML = categories.map(c => `<option value="${c.id}">${c.label}</option>`).join('') + '<option value="limited">绝版兑换</option>';
-        $('#searchCategory').value = state.searchCategory;
-        $('#filterChips').innerHTML = '<button class="filter-chip active" data-category="all">全部</button>' + categories.map(c => `<button class="filter-chip" data-category="${c.id}">${c.label}</button>`).join('');
-        renderNavCounts();
-      }
-      function renderNavCounts(){
-        const counts = {all:owned.length,limited:owned.filter(x=>x.category==='limited').length};
-        categories.forEach(c=>counts[c.id]=owned.filter(x=>x.category===c.id).length);
-        document.querySelectorAll('[data-count]').forEach(n=>n.textContent=counts[n.dataset.count] || 0);
-      }
-      function safeText(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-      function savedItem(id){ return owned.find(x=>String(x.id)===String(id)); }
-      function iconUrl(item){
-        const path = item?.fields?.Icon?.path_hr1 || item?.fields?.Icon?.path || item?.icon;
-        if(!path) return '';
-        const params = new URLSearchParams({path,format:'png'});
-        return `https://v2.xivapi.com/api/asset?${params.toString()}`;
-      }
-      function localizeName(name,id){
-        const value=String(name||'').trim();
-        if(/[\u3400-\u9fff]/.test(value)) return value;
-        return nameTranslations[value.toLowerCase()] || `游戏物品 #${id}`;
-      }
-      function renderCards(items, isSavedView=false){
-        if(!items.length){
-          grid.innerHTML = `<div class="empty"><div class="empty-icon">${isSavedView?'✧':'⌕'}</div><h3>${isSavedView?'这里还没有收藏':'没有找到匹配的物品'}</h3><p>${isSavedView?'去物品图鉴搜索物品，再加入你的收藏。':'换个更简短的关键词再试一次。'}</p>${isSavedView?'<button id="goCatalog">浏览物品图鉴</button>':''}</div>`;
-          const go=$('#goCatalog'); if(go) go.onclick=()=>setMode('catalog'); return;
-        }
-        grid.innerHTML = items.map((item,i)=>{
-          const fields = item.fields || item;
-          const id = item.row_id ?? item.id;
-          const name = localizeName(fields.Name || fields.Singular || item.name,id);
-          const sheet = '游戏物品';
-          const saved = savedItem(id);
-          const category = isSavedView ? categoryById(saved?.category) : categoryById(state.searchCategory);
-          const src = iconUrl(item);
-          const img = src ? `<img src="${safeText(src)}" alt="" loading="lazy" onerror="this.remove()">` : '';
-          return `<article class="item-card"><div class="card-top"><div class="item-art">${emojiFor[category.id]||'✧'}${img}</div><div class="item-info"><h3 title="${safeText(name)}">${safeText(name)}</h3><p>${safeText(sheet)} · #${safeText(id)}</p></div></div><div class="card-bottom"><span class="category-tag">${category.label}</span><button class="add-button ${saved?'saved':''}" data-item-id="${safeText(id)}" data-view="${isSavedView?'saved':'catalog'}">${isSavedView?'移出收藏':saved?'已收藏 ✓':'＋ 加入收藏'}</button></div></article>`;
-        }).join('');
-        grid.querySelectorAll('[data-item-id]').forEach(button=>button.addEventListener('click',()=>toggleItem(button.dataset.itemId,button.dataset.view)));
-      }
-      function filteredOwned(){ return owned.filter(x=>state.category==='all'||x.category===state.category); }
-      function toggleItem(id,view){
-        const found=savedItem(id);
-        if(found){ owned=owned.filter(x=>String(x.id)!==String(id)); persist(); showToast('已从收藏册移除'); }
-        else {
-          const data=state.results.find(x=>String(x.row_id)===String(id));
-          const fields=data?.fields || {};
-          owned.unshift({id:String(id),name:localizeName(fields.Name,id),sheet:'游戏物品',icon:fields.Icon?.path_hr1||fields.Icon?.path||'',category:state.searchCategory,addedAt:new Date().toISOString()});
-          persist(); showToast('已收入收藏册');
-        }
-        if(state.mode==='collection') renderCards(filteredOwned(),true); else renderCards(state.results,false);
-      }
-      function setMode(mode){
-        state.mode=mode;
-        $('#catalogMode').classList.toggle('active',mode==='catalog'); $('#collectionMode').classList.toggle('active',mode==='collection');
-        $('#catalogMode').setAttribute('aria-selected',String(mode==='catalog')); $('#collectionMode').setAttribute('aria-selected',String(mode==='collection'));
-        $('#searchForm').style.display=mode==='catalog'?'flex':'none'; $('.notice').style.display=mode==='catalog'?'flex':'none'; $('.filters').style.display='flex';
-        $('#sectionTitle').textContent=mode==='catalog'?'物品图鉴':(state.category==='all'?'我的收藏':categoryById(state.category).label);
-        $('#sectionSubtitle').textContent=mode==='catalog'?'搜索游戏物品，加入你的收藏册。':'你在此浏览器保存的收藏清单。';
-        if(mode==='collection'){const list=filteredOwned();renderCards(list,true);$('#resultCount').textContent=`${list.length} 件收藏`;$('#filterChips').style.visibility='visible';}
-        else {$('#filterChips').style.visibility='hidden';renderCards(state.results);$('#resultCount').textContent=state.results.length?`${state.results.length} 件结果`:'等待搜索';}
-      }
-      function setCategory(id){
-        state.category=id;
-        document.querySelectorAll('.side-link[data-category]').forEach(b=>b.classList.toggle('active',b.dataset.category===id));
-        document.querySelectorAll('.filter-chip').forEach(b=>b.classList.toggle('active',b.dataset.category===id));
-        if(state.mode==='collection'){ $('#sectionTitle').textContent=id==='all'?'我的收藏':categoryById(id).label; renderCards(filteredOwned(),true); $('#resultCount').textContent=`${filteredOwned().length} 件收藏`; }
-        $('#sidebar').classList.remove('open'); $('#mobileMenu').setAttribute('aria-expanded','false');
-      }
-      async function search(query=state.query){
-        const q=query.trim(); if(!q){showToast('请输入物品名称');$('#searchInput').focus();return;}
-        state.query=q;state.loading=true;$('#resultCount').textContent='正在查询';$('#apiStatus').textContent='正在连接物品数据服务…';grid.innerHTML='<div class="loading">正在查询游戏物品目录…</div>';
-        const searchText=searchAliases[q]||q;
-        const params=new URLSearchParams({query:`Name~"${searchText.replace(/["\\]/g,'')}"`,sheets:'Item',limit:'18',fields:'Name,Icon',language:'en'});
-        try{
-          const response=await fetch(`${API}?${params.toString()}`,{headers:{Accept:'application/json'}});
-          if(!response.ok) throw new Error(`数据服务状态 ${response.status}`);
-          const data=await response.json(); state.results=Array.isArray(data.results)?data.results:[]; state.lastError='';
-          $('#apiStatus').textContent='物品数据服务：已连接';$('#resultCount').textContent=`${state.results.length} 件结果`;
-          if(state.mode==='catalog') renderCards(state.results); else setMode('collection');
-        }catch(error){
-          state.results=[];state.lastError=error.message||'连接失败';$('#apiStatus').textContent='物品数据服务暂时不可用';$('#resultCount').textContent='连接失败';
-          grid.innerHTML='<div class="empty"><div class="empty-icon">⌁</div><h3>暂时无法连接物品目录</h3><p>请检查网络后重试。收藏清单仍保存在当前浏览器。</p><button id="retrySearch">重新连接</button></div>';
-          $('#retrySearch').onclick=()=>search(q);
-        }finally{state.loading=false;}
-      }
-      let toastTimer;function showToast(message){const el=$('#toast');el.textContent=message;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),2100);}
-      function exportList(){
-        const payload={'导出时间':new Date().toISOString(),'来源':'艾欧泽亚收藏册','收藏物品':owned.map(x=>({'物品编号':x.id,'名称':localizeName(x.name,x.id),'分类':categoryById(x.category).label,'添加时间':x.addedAt}))};
-        const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='艾欧泽亚收藏清单.json';a.click();URL.revokeObjectURL(url);showToast('收藏清单已导出');
-      }
-      renderNav();renderStats();renderNavCounts();
-      document.addEventListener('click',e=>{
-        const nav=e.target.closest('.side-link[data-category],.filter-chip[data-category]');if(nav){if(state.mode==='catalog'&&nav.classList.contains('side-link'))setMode('collection');setCategory(nav.dataset.category);}
-      });
-      $('#catalogMode').addEventListener('click',()=>setMode('catalog'));
-      $('#collectionMode').addEventListener('click',()=>{setMode('collection');setCategory(state.category);});
-      $('#searchForm').addEventListener('submit',e=>{e.preventDefault();state.searchCategory=$('#searchCategory').value;search($('#searchInput').value);});
-      $('#searchCategory').addEventListener('change',e=>{state.searchCategory=e.target.value;if(state.mode==='catalog')renderCards(state.results);});
-      $('#mobileMenu').addEventListener('click',()=>{const open=$('#sidebar').classList.toggle('open');$('#mobileMenu').setAttribute('aria-expanded',String(open));});
-      $('#exportBtn').addEventListener('click',exportList);
-      setMode('catalog');search('陆行鸟');
-    })();
-  </script>
-</body>
+    </div>
+    <div id="modal-root"></div>
+    <div id="toast" role="status" aria-live="polite"></div>
+  </body>
 </html>
