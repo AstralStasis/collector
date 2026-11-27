@@ -469,7 +469,7 @@ function pageHeading() {
 }
 function rightRail() {
   const wishes = data.wishlist.map(find).filter(Boolean).slice(0, 3);
-  return `<aside class="right-rail" aria-label="收藏灵感"><section class="assistant-card"><div class="section-title"><h2>${icon("sparkles")} 收藏灵感</h2><span class="ai-pill">FOR YOU</span></div><div class="eyebrow">YOUR NEXT LITTLE OBSESSION</div><h3>下一份心动，<br>从哪里开始？</h3><p>根据你的收藏进度和心愿清单，<br>找到适合今天的收集目标。</p><div class="suggestion-tags"><button data-action="quick-plan" data-style="solo">一个人也能出发</button><button data-action="quick-plan" data-style="casual">轻松收藏</button><button data-action="quick-plan" data-style="challenge">挑战稀有珍藏</button></div><button class="primary-btn" data-action="planner">${icon("route")} 生成专属收集计划 ${icon("arrow")}</button><div class="assistant-note"><span class="dot"></span>基于收藏偏好推荐 · 无需对话</div></section><section class="rail-panel"><div class="section-title"><h2>${icon("heart")} 心愿清单 <span class="muted">${data.wishlist.length}</span></h2><button data-action="navigate" data-view="wishlist">查看全部 →</button></div><div class="wish-preview">${wishes.length ? wishes.map((x) => `<button class="wish-row" data-action="detail" data-key="${esc(x.key)}"><span class="wish-thumb"><img src="${esc(x.image)}" alt="" loading="lazy"></span><span><strong>${esc(x.name)}</strong><small>${esc(x.sourceType)} · ${categories[x.category].name}</small></span>${icon("right")}</button>`).join("") : '<p class="muted" style="font-size:10px;line-height:1.8">点击藏品上的爱心，把下一份期待放在这里。</p>'}</div></section><div class="rail-tip"><div class="eyebrow">LITTLE REMINDER</div><p>「旅途的意义，<br>也藏在那些不经意的收获里。」</p><small>慢慢来，你的故事才刚刚开始。</small></div></aside>`;
+  return `<aside class="right-rail" aria-label="收藏灵感"><section class="assistant-card"><div class="section-title"><h2>${icon("sparkles")} 收藏灵感</h2><span class="ai-pill">FOR YOU</span></div><div class="eyebrow">YOUR NEXT LITTLE OBSESSION</div><h3>下一份心动，<br>从哪里开始？</h3><p>根据你的收藏进度和心愿清单，<br>找到适合今天的收集目标。</p><button class="primary-btn" data-action="planner">${icon("route")} 生成专属收集计划 ${icon("arrow")}</button><div class="assistant-note"><span class="dot"></span>基于收藏偏好推荐 · 无需对话</div></section><section class="rail-panel"><div class="section-title"><h2>${icon("heart")} 心愿清单 <span class="muted">${data.wishlist.length}</span></h2><button data-action="navigate" data-view="wishlist">查看全部 →</button></div><div class="wish-preview">${wishes.length ? wishes.map((x) => `<button class="wish-row" data-action="detail" data-key="${esc(x.key)}"><span class="wish-thumb"><img src="${esc(x.image)}" alt="" loading="lazy"></span><span><strong>${esc(x.name)}</strong><small>${esc(x.sourceType)} · ${categories[x.category].name}</small></span>${icon("right")}</button>`).join("") : '<p class="muted" style="font-size:10px;line-height:1.8">点击藏品上的爱心，把下一份期待放在这里。</p>'}</div></section><div class="rail-tip"><div class="eyebrow">LITTLE REMINDER</div><p>「旅途的意义，<br>也藏在那些不经意的收获里。」</p><small>慢慢来，你的故事才刚刚开始。</small></div></aside>`;
 }
 function baseItems() {
   return catalog.filter(
@@ -748,6 +748,10 @@ function openAbout() {
 // Newest website changes first; these announcements are shared by every archive.
 const siteAnnouncements = [
   {
+    date: "2026-11-27", title: "专属收集计划简化",
+    text: "计划设置保留藏品分类、排除付费与心愿优先，移除冒险方式和时间预算，每次推荐最多 3 个未收藏目标。",
+  },
+  {
     date: "2026-11-27", title: "网站修改公告上线",
     text: "右上角铃铛现用于查看网站功能调整与修复记录，方便了解藏馆的最新变化。",
   },
@@ -770,10 +774,9 @@ function openAnnouncements() {
     "announcements",
   );
 }
-function openPlanner(style) {
+function openPlanner() {
   preferenceDraft = {
     ...data.preferences,
-    ...(style ? { style } : {}),
     category: hasOwn(categories, view)
       ? view
       : data.preferences.category,
@@ -783,92 +786,41 @@ function openPlanner(style) {
 function renderPlanner() {
   const p = preferenceDraft;
   showModal(
-    `<div class="simple-modal planner-modal"><div class="eyebrow" style="margin-bottom:12px">A PLAN MADE JUST FOR YOU</div><h2 id="modal-title">今天，想怎样冒险？</h2><p class="muted">告诉藏馆一点偏好，从未收藏的条目中发现下一份心动。</p><form id="planner-form"><div class="planner-label">想收集什么？</div><div class="choice-row category-choices">${[["all", "不限分类", "compass"], ...Object.entries(categories).map(([id, c]) => [id, c.name, c.icon])].map(([v, n, i]) => `<label class="choice-chip"><input type="radio" name="category" value="${v}" ${p.category === v ? "checked" : ""}>${icon(i)}<span>${n}</span></label>`).join("")}</div><div class="planner-label">今天的冒险方式</div><div class="style-choices">${[
-      ["casual", "feather", "轻松收藏", "优先任务、兑换与日常目标"],
-      ["solo", "compass", "独自出发", "优先可独立推进的获取方式"],
-      ["challenge", "trophy", "挑战珍藏", "优先成就、副本与低持有率目标"],
-    ]
-      .map(
-        ([v, i, n, d]) =>
-          `<label class="style-choice"><input type="radio" name="style" value="${v}" ${p.style === v ? "checked" : ""}><span class="style-icon">${icon(i)}</span><strong>${n}</strong><small>${d}</small><span class="choice-dot"></span></label>`,
-      )
-      .join(
-        "",
-      )}</div><div class="planner-label">给今天的收藏留一点时间</div><div class="choice-row budget-choices">${[
-      ["20", "20 分钟", "2 个目标"],
-      ["45", "45 分钟", "3 个目标"],
-      ["90", "90 分钟", "4 个目标"],
-    ]
-      .map(
-        ([v, n, d]) =>
-          `<label class="choice-chip"><input type="radio" name="budget" value="${v}" ${p.budget === v ? "checked" : ""}>${icon("clock")}<span>${n}<small>${d}</small></span></label>`,
-      )
-      .join(
-        "",
-      )}</div><p class="planner-budget-note">时间预算仅用于控制目标数量，不代表预计获取耗时。</p><div class="planner-options"><label><input type="checkbox" name="excludePaid" ${p.excludePaid ? "checked" : ""}> 排除商城与付费特典</label><label><input type="checkbox" name="prioritizeWish" ${p.prioritizeWish ? "checked" : ""}> 优先心愿清单</label></div><div class="planner-submit"><span>${icon("lock")} 偏好随收藏档案保存</span><button type="submit" class="primary-btn">${icon("sparkles")} 寻找下一份珍藏 ${icon("arrow")}</button></div></form></div>`,
+    `<div class="simple-modal planner-modal"><div class="eyebrow" style="margin-bottom:12px">A PLAN MADE JUST FOR YOU</div><h2 id="modal-title">今天，想怎样冒险？</h2><p class="muted">告诉藏馆一点偏好，从未收藏的条目中发现下一份心动。</p><form id="planner-form"><div class="planner-label">想收集什么？</div><div class="choice-row category-choices">${[["all", "不限分类", "compass"], ...Object.entries(categories).map(([id, c]) => [id, c.name, c.icon])].map(([v, n, i]) => `<label class="choice-chip"><input type="radio" name="category" value="${v}" ${p.category === v ? "checked" : ""}>${icon(i)}<span>${n}</span></label>`).join("")}</div><div class="planner-options"><label><input type="checkbox" name="excludePaid" ${p.excludePaid ? "checked" : ""}> 排除商城与付费特典</label><label><input type="checkbox" name="prioritizeWish" ${p.prioritizeWish ? "checked" : ""}> 优先心愿清单</label></div><div class="planner-submit"><span>${icon("lock")} 偏好随收藏档案保存</span><button type="submit" class="primary-btn">${icon("sparkles")} 寻找下一份珍藏 ${icon("arrow")}</button></div></form></div>`,
     "planner",
   );
 }
 function generatePlan(p) {
-  let pool = catalog.filter(
+  const pool = catalog.filter(
     (x) =>
       !ownedKeys.has(x.key) &&
       (p.category === "all" || x.category === p.category) &&
       (!p.excludePaid || !x.premium),
   );
-  if (p.style === "solo")
-    pool = pool.filter(
-      (x) =>
-        [
-          "金碟游乐场",
-          "雇员探险",
-          "友好部族",
-          "狩猎兑换",
-          "商店购买",
-          "危命任务",
-          "商城特典",
-        ].includes(x.sourceType) ||
-        ["emotes-199", "emotes-126", "emotes-121", "emotes-122"].includes(
-          x.key,
-        ),
-    );
   return pool
     .map((x, i) => {
-      let score =
-        1 + (p.prioritizeWish && wishlistKeys.has(x.key) ? 80 : 0);
-      if (p.style === "casual")
-        score +=
-          ({
-            任务奖励: 40,
-            金碟游乐场: 26,
-            商店购买: 15,
-            雇员探险: 24,
-            友好部族: 20,
-            狩猎兑换: 22,
-          }[x.sourceType] || 0) +
-          (hasOwnedRate(x) ? x.ownedRate : 50) / 10;
-      if (p.style === "challenge")
-        score +=
-          ({ 团队副本: 35, 蛮神讨伐: 28, 成就奖励: 40, 深层迷宫: 22, 绝境战: 55, 武器强化: 30, 工具强化: 25 }[
-            x.sourceType
-          ] || 0) +
-          (hasOwnedRate(x) ? (100 - x.ownedRate) / 4 : 0);
-      if (p.style === "solo")
-        score +=
-          { 任务奖励: 35, 金碟游乐场: 30, 雇员探险: 28, 友好部族: 24 }[
-            x.sourceType
-          ] || 0;
+      const score =
+        1 + (p.prioritizeWish && wishlistKeys.has(x.key) ? 80 : 0) +
+        ({
+          任务奖励: 40,
+          金碟游乐场: 26,
+          商店购买: 15,
+          雇员探险: 24,
+          友好部族: 20,
+          狩猎兑换: 22,
+        }[x.sourceType] || 0) +
+        (hasOwnedRate(x) ? x.ownedRate : 50) / 10;
       return { x, score: score - i / 1000 };
     })
     .sort((a, b) => b.score - a.score)
-    .slice(0, { 20: 2, 45: 3, 90: 4 }[p.budget] || 3)
+    .slice(0, 3)
     .map((r) => r.x);
 }
 function renderRecommendations() {
   const items = generated.map(find).filter(Boolean),
     p = data.preferences;
   showModal(
-    `<div class="simple-modal recommendation-modal"><div class="eyebrow" style="margin-bottom:12px">YOUR NEXT CHAPTER</div><h2 id="modal-title">为今天的你，挑好了这些珍藏</h2><p class="muted">${p.style === "solo" ? "独自出发" : p.style === "challenge" ? "挑战珍藏" : "轻松收藏"} · ${esc(p.budget)} 分钟规划 · ${items.length} 个目标<br>基于你的未收藏条目${p.prioritizeWish ? "与心愿清单" : ""}，在本机完成推荐。</p>${items.length ? `<div class="recommendation-list">${items.map((x, i) => `<article class="recommendation-item"><span class="recommendation-number">0${i + 1}</span><img src="${esc(x.image)}" alt="${esc(x.name)}"><div><h3>${esc(x.name)} ${wishlistKeys.has(x.key) ? '<span class="tag">心愿优先</span>' : ""}</h3><p>${esc(x.source)}</p><small>${p.style === "solo" ? "先检查解锁前置与所需货币" : p.style === "challenge" ? "按当前进度准备条件，掉落结果具有随机性" : "优先推进已有任务或货币接近的目标"}</small></div></article>`).join("")}</div><div class="planner-result-note">${icon("info")} 时间预算用于控制目标数量，不承诺完成时间。实际解锁条件与获取方式请核对游戏内资料。</div><div class="planner-submit"><button class="text-btn" data-action="planner">${icon("refresh")} 调整偏好</button><button class="primary-btn" data-action="accept-plan">${icon("plus")} 加入我的收集计划</button></div>` : emptyState("这一页，暂时没有新的目标", "可以调整分类或获取方式，再寻找新的收藏灵感。", "planner", "调整偏好")}</div>`,
+    `<div class="simple-modal recommendation-modal"><div class="eyebrow" style="margin-bottom:12px">YOUR NEXT CHAPTER</div><h2 id="modal-title">为今天的你，挑好了这些珍藏</h2><p class="muted">${items.length} 个收集目标<br>基于你的未收藏条目${p.prioritizeWish ? "与心愿清单" : ""}，在本机完成推荐。</p>${items.length ? `<div class="recommendation-list">${items.map((x, i) => `<article class="recommendation-item"><span class="recommendation-number">0${i + 1}</span><img src="${esc(x.image)}" alt="${esc(x.name)}"><div><h3>${esc(x.name)} ${wishlistKeys.has(x.key) ? '<span class="tag">心愿优先</span>' : ""}</h3><p>${esc(x.source)}</p><small>先核对解锁条件，再按自己的节奏推进</small></div></article>`).join("")}</div><div class="planner-result-note">${icon("info")} 实际解锁条件与获取方式请核对游戏内资料。</div><div class="planner-submit"><button class="text-btn" data-action="planner">${icon("refresh")} 调整偏好</button><button class="primary-btn" data-action="accept-plan">${icon("plus")} 加入我的收集计划</button></div>` : emptyState("这一页，暂时没有新的目标", "可以调整分类或偏好，再寻找新的收藏灵感。", "planner", "调整偏好")}</div>`,
     "recommendations",
   );
 }
@@ -1023,7 +975,6 @@ document.addEventListener("click", (event) => {
     return;
   }
   if (a === "planner") return openPlanner();
-  if (a === "quick-plan") return openPlanner(el.dataset.style);
   if (a === "accept-plan") {
     const count = generated.filter((k) => !planKeys.has(k)).length;
     data.plan = [...new Set([...data.plan, ...generated])];
@@ -1156,9 +1107,8 @@ document.addEventListener("submit", (event) => {
     event.preventDefault();
     const form = new FormData(event.target);
     data.preferences = {
+      ...data.preferences,
       category: String(form.get("category") || "all"),
-      style: String(form.get("style") || "casual"),
-      budget: String(form.get("budget") || "45"),
       excludePaid: form.has("excludePaid"),
       prioritizeWish: form.has("prioritizeWish"),
     };

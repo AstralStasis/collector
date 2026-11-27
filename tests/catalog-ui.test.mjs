@@ -167,3 +167,50 @@ check("website announcements are shared updates rather than personal collection 
   }
 });
 
+check("planner keeps category and checkboxes while removing style and time controls", () => {
+  context.savedPlannerUI = run("({archive:JSON.stringify(data),view,showModal})");
+  try {
+    run('view="overview";data.preferences={...data.preferences,style:"challenge",budget:"90"};showModal=(html,type)=>{plannerCapture={html,type};};openPlanner();');
+    const captured = run("plannerCapture");
+    assert.equal(captured.type, "planner");
+    for (const name of ["category", "excludePaid", "prioritizeWish"]) assert(captured.html.includes('name="' + name + '"'));
+    assert(!/name="(?:style|budget)"|今天的冒险方式|给今天的收藏留一点时间|分钟|时间预算/.test(captured.html));
+    assert.equal(run("data.preferences.style"), "challenge");
+    assert.equal(run("data.preferences.budget"), "90");
+  } finally {
+    run("showModal=savedPlannerUI.showModal;data=JSON.parse(savedPlannerUI.archive);view=savedPlannerUI.view;refreshArchiveIndexes();");
+  }
+});
+
+check("planner ignores legacy style/time and preserves category, paid, owned and wishlist rules", () => {
+  context.savedPlannerData = run("({catalog,archive:JSON.stringify(data)})");
+  context.plannerFixture = [
+    { key:"mounts-owned", category:"mounts", sourceType:"任务奖励", ownedRate:90 },
+    { key:"mounts-quest", category:"mounts", sourceType:"任务奖励", ownedRate:50 },
+    { key:"mounts-drop", category:"mounts", sourceType:"团队副本", ownedRate:1 },
+    { key:"mounts-paid", category:"mounts", sourceType:"商城特典", ownedRate:80, premium:true },
+    { key:"mounts-gold", category:"mounts", sourceType:"金碟游乐场", ownedRate:50 },
+    { key:"mounts-achievement", category:"mounts", sourceType:"成就奖励", ownedRate:50 },
+    { key:"minions-quest", category:"minions", sourceType:"任务奖励", ownedRate:50 },
+  ];
+  try {
+    run('catalog=plannerFixture;rebuildCatalogIndexes();data={...demo(),owned:["mounts-owned"],wishlist:["mounts-drop","mounts-paid"],plan:[]};refreshArchiveIndexes();');
+    const preferences = { category:"mounts", excludePaid:true, prioritizeWish:true };
+    const recommend = (p) => Array.from(run("generatePlan(" + JSON.stringify(p) + ").map(x=>x.key)"));
+    const expected = recommend(preferences);
+    assert.equal(expected.length, 3);
+    assert.equal(expected[0], "mounts-drop");
+    assert(expected.every(key => key.indexOf("mounts-") === 0 && key !== "mounts-owned" && key !== "mounts-paid"));
+    for (const style of ["casual", "solo", "challenge"]) for (const budget of ["20", "45", "90"]) {
+      assert.deepEqual(recommend({...preferences,style,budget}), expected);
+    }
+    assert.equal(recommend({...preferences,prioritizeWish:false})[0], "mounts-quest");
+    assert(recommend({...preferences,excludePaid:false}).includes("mounts-paid"));
+    assert.deepEqual(recommend({...preferences,category:"minions"}), ["minions-quest"]);
+    run("data.owned=catalog.map(x=>x.key);refreshArchiveIndexes();");
+    assert.deepEqual(recommend(preferences), []);
+  } finally {
+    run("catalog=savedPlannerData.catalog;rebuildCatalogIndexes();data=JSON.parse(savedPlannerData.archive);refreshArchiveIndexes();");
+  }
+});
+
