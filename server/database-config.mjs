@@ -1,5 +1,5 @@
-import path from "node:path";
-import { readFileSync } from "node:fs";
+import path from "path";
+import { readFileSync } from "fs";
 
 const integer = (value, fallback, name, max) => {
   if (value === undefined || value === "") return fallback;
@@ -29,8 +29,8 @@ export function readDatabaseConfig({ root, env = process.env } = {}) {
   return {
     client,
     connection: {
-      host, user, database, password: env.MYSQL_PASSWORD ?? address.password ?? "",
-      port: integer(env.MYSQL_PORT ?? address.port, 3306, "MYSQL_PORT", 65535),
+      host, user, database, password: env.MYSQL_PASSWORD == null ? (address.password == null ? "" : address.password) : env.MYSQL_PASSWORD,
+      port: integer(env.MYSQL_PORT == null ? address.port : env.MYSQL_PORT, 3306, "MYSQL_PORT", 65535),
       connectionLimit: integer(env.MYSQL_CONNECTION_LIMIT, 10, "MYSQL_CONNECTION_LIMIT", 100),
       connectTimeout: integer(env.MYSQL_CONNECT_TIMEOUT, 10000, "MYSQL_CONNECT_TIMEOUT", 120000),
       ...(ssl ? { ssl } : {}),

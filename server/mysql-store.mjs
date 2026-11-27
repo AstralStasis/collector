@@ -1,9 +1,10 @@
 import mysql from "mysql2/promise";
-import { readFile, readdir } from "node:fs/promises";
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { promises as fsPromises } from "fs";
+const { readFile, readdir } = fsPromises;
+import { createHash } from "crypto";
 import { ApiError } from "./errors.mjs";
 import { defaults, validateArchive } from "./validation.mjs";
-import { setTimeout as delay } from "node:timers/promises";
+import { randomUUID, randomToken, delay } from "./runtime.mjs";
 
 const hash = value => createHash("sha256").update(value).digest("hex");
 const decode = value => typeof value === "string" ? JSON.parse(value) : value;
@@ -99,15 +100,15 @@ export class MySQLArchiveStore {
       await connection.beginTransaction();
       try {
         const meta = await first(connection, "SELECT digest FROM catalog_metadata WHERE id=1 FOR UPDATE");
-        if (meta?.digest === digest) { await connection.commit(); return false; }
+        if (meta && meta.digest === digest) { await connection.commit(); return false; }
         for (const item of catalog.items) {
           await connection.execute("INSERT INTO catalog_items (item_key, game_id, category, name, english, patch, source_type, document) VALUES (?, ?, ?, ?, ?, ?, ?, ?) AS incoming ON DUPLICATE KEY UPDATE game_id=incoming.game_id, category=incoming.category, name=incoming.name, english=incoming.english, patch=incoming.patch, source_type=incoming.source_type, document=incoming.document", [item.key, item.id, item.category, item.name, item.english, item.patch, item.sourceType, JSON.stringify(item)]);
           await connection.execute("DELETE FROM exchange_offers WHERE item_key=?", [item.key]);
-          for (const offer of item.exchanges ?? []) {
-            await connection.execute("INSERT INTO exchange_offers (item_key, currency, amount, expansion, region, `rank`) VALUES (?, ?, ?, ?, ?, ?) AS incoming ON DUPLICATE KEY UPDATE `rank`=incoming.`rank`", [item.key, offer.currency, offer.amount, offer.expansion ?? "", offer.region ?? "", offer.rank ?? null]);
+          for (const offer of item.exchanges == null ? [] : item.exchanges) {
+            await connection.execute("INSERT INTO exchange_offers (item_key, currency, amount, expansion, region, `rank`) VALUES (?, ?, ?, ?, ?, ?) AS incoming ON DUPLICATE KEY UPDATE `rank`=incoming.`rank`", [item.key, offer.currency, offer.amount, offer.expansion == null ? "" : offer.expansion, offer.region == null ? "" : offer.region, offer.rank == null ? null : offer.rank]);
           }
         }
-        await connection.execute("INSERT INTO catalog_metadata (id, digest, document, updated_at) VALUES (1, ?, ?, ?) AS incoming ON DUPLICATE KEY UPDATE digest=incoming.digest, document=incoming.document, updated_at=incoming.updated_at", [digest, JSON.stringify(catalog.meta ?? {}), this.clock()]);
+        await connection.execute("INSERT INTO catalog_metadata (id, digest, document, updated_at) VALUES (1, ?, ?, ?) AS incoming ON DUPLICATE KEY UPDATE digest=incoming.digest, document=incoming.document, updated_at=incoming.updated_at", [digest, JSON.stringify(catalog.meta == null ? {} : catalog.meta), this.clock()]);
         await connection.commit();
         return true;
       } catch (error) { try { await connection.rollback(); } catch {} throw error; }
@@ -148,7 +149,7 @@ export class MySQLArchiveStore {
   async createSession(id, days = 30) { return this.rotateSession(id, undefined, days); }
 
   async rotateSession(id, previous, days = 30) {
-    const token = randomBytes(32).toString("base64url"), csrfToken = randomBytes(24).toString("base64url"), now = this.clock(), expiresAt = now + days * 86400000;
+    const token = randomToken(32), csrfToken = randomToken(24), now = this.clock(), expiresAt = now + days * 86400000;
     await this.transaction(async connection => {
       await connection.execute("DELETE FROM sessions WHERE expires_at<=?", [now]);
       await connection.execute("INSERT INTO sessions (token_hash, user_id, csrf_token, expires_at, created_at) VALUES (?, ?, ?, ?, ?)", [hash(token), id, csrfToken, expiresAt, now]);
@@ -166,7 +167,7 @@ export class MySQLArchiveStore {
   async deleteSession(token) { if (token) await this.pool.execute("DELETE FROM sessions WHERE token_hash=?", [hash(token)]); }
 
   async readArchive(connection, id, profile) {
-    const row = profile ?? await first(connection, "SELECT * FROM profiles WHERE user_id=?", [id]);
+    const row = profile == null ? await first(connection, "SELECT * FROM profiles WHERE user_id=?", [id]) : profile;
     if (!row) throw new ApiError(404, "archive_not_found", "档案不存在。");
     const [entries] = await connection.execute("SELECT * FROM collection_entries WHERE user_id=? ORDER BY item_key", [id]);
     const updatedAt = Number(row.updated_at);
@@ -193,7 +194,7 @@ export class MySQLArchiveStore {
       const owned = new Set(archive.owned), wish = new Set(archive.wishlist), plan = new Map(archive.plan.map((key, index) => [key, index]));
       await connection.execute("DELETE FROM collection_entries WHERE user_id=?", [id]);
       for (const key of new Set([...archive.owned, ...archive.wishlist, ...archive.plan])) {
-        await connection.execute("INSERT INTO collection_entries (user_id, item_key, owned, wishlist, plan_position) VALUES (?, ?, ?, ?, ?)", [id, key, owned.has(key) ? 1 : 0, wish.has(key) ? 1 : 0, plan.get(key) ?? null]);
+        await connection.execute("INSERT INTO collection_entries (user_id, item_key, owned, wishlist, plan_position) VALUES (?, ?, ?, ?, ?)", [id, key, owned.has(key) ? 1 : 0, wish.has(key) ? 1 : 0, plan.has(key) ? plan.get(key) : null]);
       }
       await connection.execute("UPDATE profiles SET display_name=?, server_name=?, is_demo=?, preferences=?, activity=?, revision=revision+1, updated_at=? WHERE user_id=?", [archive.profile.name, archive.profile.server, archive.profile.demo ? 1 : 0, JSON.stringify(archive.preferences), JSON.stringify(archive.activity), this.clock(), id]);
       return this.readArchive(connection, id);

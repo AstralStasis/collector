@@ -1,15 +1,16 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+import test from "./support/test.mjs";
+import { strict as assert } from "assert";
 import http from "node:http";
 import { gunzipSync } from "node:zlib";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "./support/files.mjs";
+import { readFileSync } from "fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomUUID } from "../server/runtime.mjs";
 import { createApplication } from "../server/application.mjs";
 import { readDatabaseConfig } from "../server/database-config.mjs";
 
-const catalog = JSON.parse(await readFile(new URL("../catalog.json", import.meta.url), "utf8"));
+const catalog = JSON.parse(readFileSync(new URL("../catalog.json", import.meta.url), "utf8"));
 const copy = value => JSON.parse(JSON.stringify(value));
 const sorted = values => [...values].sort();
 
@@ -86,7 +87,7 @@ async function fixture(t, kind) {
       });
       if (result.headers["set-cookie"]) cookie = result.headers["set-cookie"][0].split(";", 1)[0];
       if (result.body.csrfToken) csrf = result.body.csrfToken;
-      if (result.body.user?.id) users.add(result.body.user.id);
+      if (result.body.user && result.body.user.id) users.add(result.body.user.id);
       return result;
     },
   };
@@ -114,7 +115,7 @@ for (const kind of ["sqlite", "mysql"]) {
       const saved = await f.request("/api/archive", { method: "PUT", acceptEncoding: "gzip", body: { archive, revision: current.revision } });
       current = expectOk(saved);
       assert.equal(saved.headers["content-encoding"], undefined);
-      const registered = await f.request("/api/auth/register", { method: "POST", acceptEncoding: "gzip", body: { username: "catalog_" + randomUUID().replaceAll("-", "").slice(0, 20), password: "catalog-http-test-2026" } });
+      const registered = await f.request("/api/auth/register", { method: "POST", acceptEncoding: "gzip", body: { username: "catalog_" + randomUUID().split("-").join("").slice(0, 20), password: "catalog-http-test-2026" } });
       assert.equal(registered.headers["content-encoding"], undefined);
       assert.deepEqual(expectOk(registered, 201).archive, current.archive);
       const before = copy(current);
@@ -130,7 +131,7 @@ for (const kind of ["sqlite", "mysql"]) {
       const enriched = copy(stored);
       // Exercise unknown raw API fields even before the enriched catalog is installed.
       const first = enriched.items[0];
-      first.collect = { ...first.collect, data: { ...first.collect?.data, transportFixture: { item_id: null, tradeable: false, owned: 0, empty: [], sources: [{ type: "Achievement", related_id: 2227, nested: [null, { name: "完整原始字段", flags: [false, 0, ""] }] }] } } };
+      first.collect = { ...first.collect, data: { ...(first.collect && first.collect.data), transportFixture: { item_id: null, tradeable: false, owned: 0, empty: [], sources: [{ type: "Achievement", related_id: 2227, nested: [null, { name: "完整原始字段", flags: [false, 0, ""] }] }] } } };
       f.app.store.catalog = enriched;
       try {
         const expected = { meta: enriched.meta, items: enriched.items, count: enriched.items.length };
@@ -159,7 +160,7 @@ for (const kind of ["sqlite", "mysql"]) {
             assert.deepEqual(gunzipSync(response.bytes), plain.bytes);
           } else assert.deepEqual(response.bytes, plain.bytes);
         }
-        for (const item of [first, enriched.items.at(-1)]) {
+        for (const item of [first, enriched.items[enriched.items.length - 1]]) {
           const detail = await f.request("/api/catalog/" + item.key, { acceptEncoding: "gzip" });
           assert.deepEqual(expectOk(detail), item);
           assert.equal(detail.headers["content-encoding"], undefined);

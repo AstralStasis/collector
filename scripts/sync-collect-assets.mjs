@@ -1,7 +1,11 @@
-import { readFile, readdir, mkdir, writeFile, rename } from "node:fs/promises";
+import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { delay } from "../server/runtime.mjs";
+import fetch, { timeoutSignal } from "./http.mjs";
+
+const { readFile, readdir, mkdir, writeFile, rename } = fs;
 
 // Build-time helper only: application runtime always serves the local image paths.
 // node scripts/sync-collect-assets.mjs [--expand-api --api-cache data/collect-cache]
@@ -98,24 +102,25 @@ export async function mapLimit(items, limit, operation) {
 export function extractSharedIcon(html, sourceUrl) {
   const source = new URL(sourceUrl);
   if (source.origin !== "https://ffxivcollect.com") return null;
-  const name = /^\/images\/(frame|orchestrion)\.webp$/.exec(source.pathname)?.[1];
+  const sourceMatch = /^\/images\/(frame|orchestrion)\.webp$/.exec(source.pathname);
+  const name = sourceMatch && sourceMatch[1];
   if (!name) return null;
   const expression = new RegExp("/assets/" + name + "-[a-f0-9]+\\.webp", "i");
   const match = String(html).match(expression);
   return match ? new URL(match[0], source.origin).href : null;
 }
 
-export async function downloadImage(url, { retries = 4, timeout = 45000, fetchImpl = fetch, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), onRetry = () => {} } = {}) {
+export async function downloadImage(url, { retries = 4, timeout = 45000, fetchImpl = fetch, sleep = delay, onRetry = () => {} } = {}) {
   const errors = [];
   let resolvedUrl = url;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const fetchImage = target => fetchImpl(target, { signal: AbortSignal.timeout(timeout), headers: { Accept: "image/webp,image/png,image/jpeg", "User-Agent": "Collector-local-asset-sync/1.0" } });
+      const fetchImage = target => fetchImpl(target, { signal: timeoutSignal(timeout), headers: { Accept: "image/webp,image/png,image/jpeg", "User-Agent": "Collector-local-asset-sync/1.0" } });
       let response = await fetchImage(resolvedUrl);
       // The API uses skip_pipeline URLs; these can redirect to HTML after an asset rebuild.
       if (resolvedUrl === url && /^https:\/\/ffxivcollect\.com\/images\/(frame|orchestrion)\.webp$/.test(url) && (!response.ok || !String(response.headers.get("content-type")).startsWith("image/"))) {
         const pageUrl = url.includes("/frame.webp") ? "https://ffxivcollect.com/frames" : "https://ffxivcollect.com/orchestrions";
-        const page = await fetchImpl(pageUrl, { signal: AbortSignal.timeout(timeout), headers: { Accept: "text/html" } });
+        const page = await fetchImpl(pageUrl, { signal: timeoutSignal(timeout), headers: { Accept: "text/html" } });
         if (!page.ok) throw new Error(`Shared icon discovery HTTP ${page.status}`);
         const discovered = extractSharedIcon(await page.text(), url);
         if (!discovered) throw new Error("Official shared icon was not found in the asset pipeline");
@@ -154,7 +159,7 @@ async function loadApiCache(directory) {
   try { files = await readdir(directory); } catch (error) { if (error.code === "ENOENT") return {}; throw error; }
   const result = {};
   for (const endpoint of Object.keys(API_CATEGORIES)) {
-    const filename = files.includes(`${endpoint}.en.json`) ? `${endpoint}.en.json` : files.filter(file => file.endsWith(`-${endpoint}.json`) && /^\d{8}-en-live-\d+-/.test(file)).sort().at(-1);
+    const filename = files.includes(`${endpoint}.en.json`) ? `${endpoint}.en.json` : files.filter(file => file.endsWith(`-${endpoint}.json`) && /^\d{8}-en-live-\d+-/.test(file)).sort().slice(-1)[0];
     if (!filename) continue;
     const json = await readJson(path.join(directory, filename));
     if (!Array.isArray(json.results) || json.results.length !== json.count) throw new Error(`Incomplete API cache ${filename}`);
@@ -165,7 +170,7 @@ async function loadApiCache(directory) {
 
 function localPath(image, options) {
   if (!image || /^https?:/.test(image)) return null;
-  const normalized = image.replaceAll("\\", "/");
+  const normalized = image.split("\\").join("/");
   if (!normalized.startsWith("assets/") || normalized.includes("..") || normalized.includes("?")) throw new Error(`Unsafe local image path ${image}`);
   return path.join(options.assetsDir, normalized.slice(7));
 }
@@ -266,11 +271,11 @@ export async function syncAssets(options, log = message => console.log(message))
       if (completed % 25 === 0 || completed === pending.length) { log(JSON.stringify({ event: "progress", downloaded: completed, planned: pending.length, bytes: downloadedBytes })); await persist(); }
     } catch (error) {
       failures.push({ url: request.source, keys: request.targets.map(x => x.key), role: request.role, error: error.message });
-      log(JSON.stringify({ event: "failure", ...failures.at(-1) }));
+      log(JSON.stringify({ event: "failure", ...failures[failures.length - 1] }));
     }
   });
   await persist();
-  const missing = requests.filter(item => !imageMap[item.key]?.image).map(item => item.key);
+  const missing = requests.filter(item => !imageMap[item.key] || !imageMap[item.key].image).map(item => item.key);
   const formats = {}, uniqueFiles = new Map();
   for (const item of Object.values(imageMap)) {
     if (item.image) uniqueFiles.set(item.image, item);
@@ -288,7 +293,7 @@ export async function syncCatalogAssets({ catalog, root = projectRoot, concurren
   if (!catalog || !Array.isArray(catalog.items)) throw new Error("Catalog must contain an items array");
   const options = { ...parseArgs(["--concurrency", String(concurrency), "--retries", String(retries), "--timeout", String(timeout)]), assetsDir: path.join(path.resolve(root), "assets"), cacheDir: path.resolve(cacheDir || path.join(root, "data/collect-assets")), expandApi: false, offline, framePreviews, apiData: {} };
   const items = await mapLimit(catalog.items, concurrency, async item => {
-    const data = item.collect?.data || {};
+    const data = (item.collect && item.collect.data) || {};
     const local = await inspectLocal(item.image, options);
     const source = SHARED[item.category] || (item.category === "cards" ? data.icon || data.image : data.image || data.icon) || item.originalImage || (/^https?:/.test(item.image || "") ? item.image : "");
     let reusable = local;
@@ -296,7 +301,7 @@ export async function syncCatalogAssets({ catalog, root = projectRoot, concurren
       const stem = SHARED[item.category] ? `collect-${item.category}` : `collect-${item.key || `${item.category}-${item.id}`}`;
       for (const extension of [".webp", ".png", ".jpg"]) { reusable = await inspectLocal(`assets/${stem}${extension}`, options); if (reusable) break; }
     }
-    return { ...item, image: reusable?.image || "", originalImage: local ? item.originalImage || source : source, previewOriginalImage: item.previewOriginalImage || (item.category === "frames" ? data.image : undefined) };
+    return { ...item, image: (reusable && reusable.image) || "", originalImage: local ? item.originalImage || source : source, previewOriginalImage: item.previewOriginalImage || (item.category === "frames" ? data.image : undefined) };
   });
   options.catalogData = { ...catalog, items };
   return syncAssets(options, log);
@@ -309,7 +314,7 @@ export async function main(args = process.argv.slice(2)) {
     return;
   }
   const report = await syncAssets(options);
-  if (report.failures?.length || report.missing?.length) process.exitCode = 1;
+  if ((report.failures && report.failures.length) || (report.missing && report.missing.length)) process.exitCode = 1;
   return report;
 }
 

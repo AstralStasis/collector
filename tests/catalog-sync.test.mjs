@@ -1,6 +1,7 @@
-import test from "node:test";
-import assert from "node:assert/strict";
-import {readFile,stat,mkdtemp,mkdir,writeFile,rm} from "node:fs/promises";
+import test from "./support/test.mjs";
+import { strict as assert } from "assert";
+import {readFile,stat,mkdtemp,mkdir,writeFile,rm} from "./support/files.mjs";
+import {hasOwn} from "../server/runtime.mjs";
 import os from "node:os";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
@@ -74,7 +75,7 @@ test("catalog snapshot has unique keys, complete API metadata and local images",
   const catalog=JSON.parse(await readFile(new URL("../catalog.json",import.meta.url),"utf8"));
   assert.equal(new Set(catalog.items.map(item=>item.key)).size,catalog.items.length);
   assert.ok(catalog.meta.apiSync,"The checked-in catalog must contain a complete API synchronization snapshot.");
-  assert.equal(catalog.meta.apiSync.total,catalog.items.length);assert.equal(catalog.meta.apiSync.ordinaryTotal,catalog.items.filter(item=>Object.hasOwn(COLLECTION_ENDPOINTS,item.category)).length);
+  assert.equal(catalog.meta.apiSync.total,catalog.items.length);assert.equal(catalog.meta.apiSync.ordinaryTotal,catalog.items.filter(item=>hasOwn(COLLECTION_ENDPOINTS,item.category)).length);
   for(const item of catalog.items){assert.match(item.image,/^assets\/[a-zA-Z0-9_-]+\.(webp|png|jpg)$/);assert.ok((await stat(new URL("../"+item.image,import.meta.url))).size>0);assert.ok(item.collect);assert.ok(item.name&&item.source);if(item.collect.data)assert.equal(item.collect.data.id,item.id);assert.ok(item.ownedRate===null||(Number.isFinite(item.ownedRate)&&item.ownedRate>=0&&item.ownedRate<=100));}
   assert.equal(catalog.items.find(item=>item.key==="emotes-217").name,"啦哩吼舞");assert.equal(catalog.items.find(item=>item.key==="emotes-198").name,"绅士舞步");
   const ozma=catalog.items.find(item=>item.key==="mounts-186");assert.equal(ozma.collect.data.item_id,24626);assert.ok(ozma.enhancedDescription.length>20);

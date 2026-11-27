@@ -1,6 +1,9 @@
 import path from "node:path";
-import {readFile, writeFile, mkdir, rename, stat} from "node:fs/promises";
+import {promises as fs} from "node:fs";
 import {fileURLToPath, pathToFileURL} from "node:url";
+import fetch, {timeoutSignal} from "./http.mjs";
+
+const {readFile, writeFile, mkdir, rename, stat}=fs;
 
 export const COLLECTION_ENDPOINTS = Object.freeze({mounts:"mounts",minions:"minions",emotes:"emotes",orchestrions:"orchestrions",bardings:"bardings",cards:"triad/cards",facewear:"facewear",fashions:"fashions",frames:"frames"});
 export const API_BASE = "https://ffxivcollect.com/api/";
@@ -46,8 +49,9 @@ export function deriveExchanges(sources) {
     const text=source.text || "";
     const rule=currencyRules.find(rule=>rule.pattern.test(text));
     if(!rule){allExchange=false;continue;}
-    const amount=Number(text.match(rule.pattern)[1].replaceAll(",",""));
-    const location=Object.entries(regions).find(([en])=>text.includes(en))?.[1] || ["",""];
+    const amount=Number(text.match(rule.pattern)[1].split(",").join(""));
+    const matchingRegion=Object.entries(regions).find(([en])=>text.includes(en));
+    const location=matchingRegion?matchingRegion[1]:["",""];
     // Gemstone vouchers and unnamed vendors do not establish a regional rank.
     const rank=text.match(/Rank\s+(\d+)/i);
     exchanges.push({currency:rule.currency,currencyName:rule.currencyName,amount,expansion:location[0],region:location[1],rank:rank?Number(rank[1]):null,original:text});
@@ -69,35 +73,35 @@ export function adaptCollectible(category, english, localized, existing, fetched
   const raw={...english,...localized};
   const sources=Array.isArray(raw.sources)?raw.sources:[];
   const englishSources=Array.isArray(english.sources)?english.sources:[];
-  const preserveSource=existing?.source && sameSources(existing.sourceOriginal,englishSources);
-  const name=existing?.name && hasChinese(existing.name)?existing.name:raw.name || english.name;
+  const preserveSource=(existing && existing.source) && sameSources(existing.sourceOriginal,englishSources);
+  const name=existing && existing.name && hasChinese(existing.name)?existing.name:raw.name || english.name;
   const originalImage=safeImage(raw.image || raw.icon);
   if(!originalImage) throw new Error("API item has no image: " + key);
-  const image=imageMap[key]?.image || existing?.image || "assets/"+key+".webp";
+  const image=(imageMap[key] && imageMap[key].image) || (existing && existing.image) || "assets/"+key+".webp";
   const derived=deriveExchanges(englishSources);
   const translatedSource=translateSources(sources);
   const source=preserveSource?existing.source:translatedSource || "FFXIV Collect API 未提供具体获取途径，请在游戏内核对。";
-  const sourceType=preserveSource && existing.sourceType?existing.sourceType:sourceTypes[sources[0]?.type] || "资料未提供";
-  const result={...existing,key,id:raw.id,category,name,english:english.name,canonicalName:raw.name,nameLanguage:hasChinese(name)?"zh-CN":"en",nameStatus:existing?.nameStatus || (hasChinese(raw.name)?"verified_chinese_collect_api":"api_english_fallback"),nameSource:existing?.nameSource || API_BASE+COLLECTION_ENDPOINTS[category]+"/"+raw.id+"?language=chs",
+  const sourceType=preserveSource && existing.sourceType?existing.sourceType:sourceTypes[sources[0] && sources[0].type] || "资料未提供";
+  const result={...existing,key,id:raw.id,category,name,english:english.name,canonicalName:raw.name,nameLanguage:hasChinese(name)?"zh-CN":"en",nameStatus:(existing && existing.nameStatus) || (hasChinese(raw.name)?"verified_chinese_collect_api":"api_english_fallback"),nameSource:(existing && existing.nameSource) || API_BASE+COLLECTION_ENDPOINTS[category]+"/"+raw.id+"?language=chs",
     description:raw.description || (category === "emotes" && raw.command ? "表情指令："+raw.command : ""),enhancedDescription:raw.enhanced_description || "",tooltip:raw.tooltip || "",source,sourceEnglish:englishSources.map(s=>[s.type,s.text].filter(Boolean).join(": ")).join("；"),sourceType,sourceOriginal:englishSources,sourceUrl:"https://ffxivcollect.com/"+COLLECTION_ENDPOINTS[category]+"/"+raw.id,
-    patch:String(raw.patch),ownedRate:ownershipPercent(raw.owned),premium:englishSources.some(s=>s.type === "Premium"),image,originalImage,command:raw.command ?? null,
+    patch:String(raw.patch),ownedRate:ownershipPercent(raw.owned),premium:englishSources.some(s=>s.type === "Premium"),image,originalImage,command:raw.command === null || raw.command === undefined?null:raw.command,
     ...derived,acquisitionIncomplete:sources.length === 0,collect:{apiUrl:API_BASE+COLLECTION_ENDPOINTS[category]+"/"+raw.id+"?language=chs",fetchedAt,language:"chs",data:raw}};
-  if(preserveSource && existing.exchanges?.length) Object.assign(result,{exchanges:existing.exchanges,exchangeExclusive:existing.exchangeExclusive === true});
+  if(preserveSource && existing.exchanges && existing.exchanges.length) Object.assign(result,{exchanges:existing.exchanges,exchangeExclusive:existing.exchangeExclusive === true});
   if(!result.description) result.description=category === "frames" && raw.item_name?raw.item_name:"FFXIV Collect API 未提供条目说明。";
-  if(category === "cards") Object.assign(result,{stars:raw.stars,cardNumber:raw.number,cardStats:raw.stats?.numeric || null});
+  if(category === "cards") Object.assign(result,{stars:raw.stars,cardNumber:raw.number,cardStats:(raw.stats && raw.stats.numeric) || null});
   if(imageMap[key]) Object.assign(result,imageMap[key]);
   return result;
 }
 export function buildCatalog(current, snapshots, {fetchedAt=new Date().toISOString(),imageMap={}}={}) {
-  if(!current?.meta || !Array.isArray(current.items)) throw new Error("Existing catalog is required to preserve archive keys");
+  if(!current || !current.meta || !Array.isArray(current.items)) throw new Error("Existing catalog is required to preserve archive keys");
   const oldByKey=new Map(current.items.map(x=>[x.key,x]));
   if(oldByKey.size !== current.items.length) throw new Error("Existing catalog has duplicate keys");
   const ordinary=[];
   const counts={};
   const deferred=[];
   for(const [category,endpoint] of Object.entries(COLLECTION_ENDPOINTS)) {
-    const english=validateList(snapshots[category]?.en,category+":en");
-    const localized=validateList(snapshots[category]?.chs,category+":chs");
+    const english=validateList(snapshots[category] && snapshots[category].en,category+":en");
+    const localized=validateList(snapshots[category] && snapshots[category].chs,category+":chs");
     const localizedById=new Map(localized.map(x=>[x.id,x]));
     if(english.length !== localized.length || english.some(x=>!localizedById.has(x.id))) throw new Error("Localized ID coverage differs: "+category);
     counts[category]={endpoint:API_BASE+endpoint,apiCount:english.length,included:0};
@@ -107,15 +111,15 @@ export function buildCatalog(current, snapshots, {fetchedAt=new Date().toISOStri
       ordinary.push(adaptCollectible(category,row,localizedById.get(row.id),oldByKey.get(key),fetchedAt,imageMap));counts[category].included++;
     }
   }
-  const relics=validateList(snapshots.relics?.en,"relics:en");
-  const localizedRelics=validateList(snapshots.relics?.chs,"relics:chs");
+  const relics=validateList(snapshots.relics && snapshots.relics.en,"relics:en");
+  const localizedRelics=validateList(snapshots.relics && snapshots.relics.chs,"relics:chs");
   const relicById=new Map(relics.map(x=>[x.id,x])),localizedRelicById=new Map(localizedRelics.map(x=>[x.id,x]));
   if(relics.length !== localizedRelics.length || relics.some(x=>!localizedRelicById.has(x.id))) throw new Error("Localized ID coverage differs: relics");
   const equipment=current.items.filter(x=>["relics","ultimates","tools"].includes(x.category)).map(item=>{
     const raw=localizedRelicById.get(item.id) || relicById.get(item.id);
     if(!raw)return {...item,collect:{apiUrl:API_BASE+"relics",fetchedAt,coverage:"not_in_api",reason:"FFXIV Collect 装备 API 未单列此物品；保留已核对的游戏物品编号及既有资料。"}};
     const expected={relics:"weapons",ultimates:"ultimate",tools:"tools"}[item.category];
-    if(raw.type?.category !== expected)throw new Error("Equipment category mismatch: "+item.key);
+    if(!raw.type || raw.type.category !== expected)throw new Error("Equipment category mismatch: "+item.key);
     return {...item,canonicalName:raw.name,ownedRate:ownershipPercent(raw.owned),collect:{apiUrl:API_BASE+"relics/"+item.id+"?language=chs",fetchedAt,language:"chs",data:raw}};
   });
   const freshByKey=new Map([...ordinary,...equipment].map(x=>[x.key,x]));
@@ -131,8 +135,8 @@ export function buildCatalog(current, snapshots, {fetchedAt=new Date().toISOStri
 }
 async function readJson(filename){return JSON.parse((await readFile(filename,"utf8")).replace(/^\uFEFF/,""));}
 async function fetchList(endpoint,language,cacheDirectory) {
-  const filename=path.join(cacheDirectory,endpoint.replaceAll("/","-")+"."+language+".json");
-  const response=await fetch(API_BASE+endpoint+"?language="+language,{headers:{Accept:"application/json","User-Agent":"EorzeaArchive catalog updater"},signal:AbortSignal.timeout(45000)});
+  const filename=path.join(cacheDirectory,endpoint.split("/").join("-")+"."+language+".json");
+  const response=await fetch(API_BASE+endpoint+"?language="+language,{headers:{Accept:"application/json","User-Agent":"EorzeaArchive catalog updater"},signal:timeoutSignal(45000)});
   if(!response.ok)throw new Error("API request failed "+response.status+": "+endpoint);
   const data=await response.json();validateList(data,endpoint+":"+language);
   await mkdir(cacheDirectory,{recursive:true});await writeFile(filename,JSON.stringify(data));return data;
@@ -141,7 +145,7 @@ export async function loadSnapshots({cacheDirectory,offline=false}) {
   const snapshots={};
   for(const [category,endpoint] of [...Object.entries(COLLECTION_ENDPOINTS),["relics","relics"]]) {
     snapshots[category]={};
-    for(const language of ["en","chs"]) snapshots[category][language]=offline?await readJson(path.join(cacheDirectory,endpoint.replaceAll("/","-")+"."+language+".json")):await fetchList(endpoint,language,cacheDirectory);
+    for(const language of ["en","chs"]) snapshots[category][language]=offline?await readJson(path.join(cacheDirectory,endpoint.split("/").join("-")+"."+language+".json")):await fetchList(endpoint,language,cacheDirectory);
   }
   return snapshots;
 }
@@ -150,7 +154,7 @@ export async function validateCatalogImages(catalog, root) {
   for(const image of images) {
     if(typeof image !== "string" || !/^assets\/[A-Za-z0-9._-]+\.(?:webp|png|jpg)$/.test(image)) throw new Error("Catalog image is not a supported local asset: "+image);
     const info=await stat(path.join(root,image)).catch(()=>null);
-    if(!info?.isFile() || info.size === 0) throw new Error("Catalog image is missing or empty: "+image);
+    if(!info || !info.isFile() || info.size === 0) throw new Error("Catalog image is missing or empty: "+image);
   }
   return images.size;
 }
@@ -165,7 +169,8 @@ async function main() {
   if(!args.includes("--skip-assets")) {
     const {syncCatalogAssets}=await import("./sync-collect-assets.mjs");
     const result=await syncCatalogAssets({catalog,root,concurrency:4});
-    if(result.failures?.length || result.missing?.length || catalog.items.some(item=>!result.imageMap?.[item.key]?.image)) throw new Error("Image sync is incomplete; catalog was not replaced");
+    const imageMap=result.imageMap || {};
+    if((result.failures && result.failures.length) || (result.missing && result.missing.length) || catalog.items.some(item=>!imageMap[item.key] || !imageMap[item.key].image)) throw new Error("Image sync is incomplete; catalog was not replaced");
     catalog={...catalog,items:catalog.items.map(item=>({...item,...result.imageMap[item.key]}))};
   }
   await validateCatalogImages(catalog,root);
@@ -174,4 +179,4 @@ async function main() {
   await writeFile(temporary,JSON.stringify(catalog,null,2)+"\n");await rename(temporary,output);
   console.log(JSON.stringify({total:catalog.items.length,ordinary:catalog.meta.apiSync.ordinaryTotal,equipmentMatched:catalog.meta.apiSync.equipmentMatched,equipmentNotListed:catalog.meta.apiSync.equipmentNotListed.length,deferred:catalog.meta.apiSync.deferred.map(x=>x.key),output}));
 }
-if(process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) main().catch(error=>{console.error(error.message);process.exitCode=1;});
+if(process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) main().catch(error=>{console.error(error.stack || error.message);process.exitCode=1;});

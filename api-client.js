@@ -8,13 +8,22 @@ export class ArchiveApi {
     const headers={Accept:"application/json"};
     if(body!==undefined)headers["Content-Type"]="application/json";
     if(method!=="GET")headers["X-CSRF-Token"]=this.csrfToken;
-    let response;
-    try { response=await this.fetch(path,{method,headers,credentials:"same-origin",cache:"no-store",signal:AbortSignal.timeout(15000),...(body===undefined?{}:{body:JSON.stringify(body)})}); }
-    catch { throw new ArchiveApiError("数据库暂未连接，本机记录已保留。"); }
-    let data;try{data=await response.json();}catch{throw new ArchiveApiError("服务器返回内容无效。",response.status);}
-    if(!response.ok)throw new ArchiveApiError(data.error?.message||"请求失败，请稍后重试。",response.status,data.error?.code||"request_failed",{current:data.current});
-    if(data.csrfToken)this.csrfToken=data.csrfToken;
-    return data;
+    const controller=typeof AbortController==="function"?new AbortController():null;
+    let timer;
+    const timeout=new Promise((resolve,reject)=>{
+      timer=setTimeout(()=>{if(controller)controller.abort();reject(new Error("Request timed out"));},15000);
+      if(timer&&typeof timer.unref==="function")timer.unref();
+    });
+    try {
+      let response;
+      try { response=await Promise.race([this.fetch(path,{method,headers,credentials:"same-origin",cache:"no-store",...(controller?{signal:controller.signal}:{}),...(body===undefined?{}:{body:JSON.stringify(body)})}),timeout]); }
+      catch { throw new ArchiveApiError("数据库暂未连接，本机记录已保留。"); }
+      let data;try{data=await Promise.race([response.json(),timeout]);}catch{throw new ArchiveApiError("服务器返回内容无效。",response.status);}
+      const error=data.error||{};
+      if(!response.ok)throw new ArchiveApiError(error.message||"请求失败，请稍后重试。",response.status,error.code||"request_failed",{current:data.current});
+      if(data.csrfToken)this.csrfToken=data.csrfToken;
+      return data;
+    } finally { clearTimeout(timer); }
   }
   catalog() { return this.request("/api/catalog"); }
   session() { return this.request("/api/session"); }
@@ -34,9 +43,16 @@ export class ArchiveSynchronizer {
     const saved=this.metadata();this.base=saved.base||null;this.state.pending=!!saved.pending;this.connecting=null;
   }
   metadata() { try{return JSON.parse(this.storage.getItem(this.storageKey))||{};}catch{return {};} }
-  persist() { try{this.storage.setItem(this.storageKey,JSON.stringify({owner:this.state.user?.id??this.metadata().owner??null,pending:this.state.pending,base:this.base}));}catch{} }
+  persist() {
+    try {
+      const user=this.state.user;let owner=user===null||user===undefined?undefined:user.id;
+      if(owner===null||owner===undefined)owner=this.metadata().owner;
+      if(owner===null||owner===undefined)owner=null;
+      this.storage.setItem(this.storageKey,JSON.stringify({owner,pending:this.state.pending,base:this.base}));
+    } catch {}
+  }
   emit(message,error="") { if(message)this.state.message=message;this.state.error=error;this.onState(this.state); }
-  settledMessage() { return this.state.user?.isGuest?"访客档案已保存到数据库":"账号档案已同步到数据库"; }
+  settledMessage() { const user=this.state.user;return (user!==null&&user!==undefined&&user.isGuest)?"访客档案已保存到数据库":"账号档案已同步到数据库"; }
   backupLocal() { try{this.storage.setItem(this.storageKey+".before-login",JSON.stringify(this.getArchive()));}catch{} }
   async start() {
     if(this.connecting)return this.connecting;

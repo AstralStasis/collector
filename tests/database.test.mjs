@@ -1,16 +1,16 @@
-import test from "node:test";
-import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
+import test from "./support/test.mjs";
+import { strict as assert } from "assert";
+import { readFileSync } from "fs";
+import { randomUUID } from "../server/runtime.mjs";
 import { fileURLToPath } from "node:url";
 import { createStore } from "../server/store.mjs";
 import { readDatabaseConfig } from "../server/database-config.mjs";
 import { hashPassword, verifyPassword } from "../server/auth.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const catalog = JSON.parse(await readFile(new URL("../catalog.json", import.meta.url), "utf8"));
+const catalog = JSON.parse(readFileSync(new URL("../catalog.json", import.meta.url), "utf8"));
 const backends = ["sqlite", "mysql"];
-const username = () => "test_" + randomUUID().replaceAll("-", "").slice(0, 24);
+const username = () => "test_" + randomUUID().split("-").join("").slice(0, 24);
 const sorted = (values) => [...values].sort();
 const copy = (value) => JSON.parse(JSON.stringify(value));
 

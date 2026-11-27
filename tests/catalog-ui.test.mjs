@@ -1,12 +1,12 @@
 /**
  * Isolated UI checks: read app.js, replace its API/DOM/timers in memory,
  * and suppress init(). No service, database, network, or product-file writes.
- * Run from project root: node --test tests/catalog-ui.test.mjs
+ * Run from project root: npm test
  */
 import fs from "node:fs";
 import vm from "node:vm";
-import assert from "node:assert/strict";
-import test from "node:test";
+import { strict as assert } from "assert";
+import test from "./support/test.mjs";
 import { fileURLToPath } from "node:url";
 
 const appPath = fileURLToPath(new URL("../app.js", import.meta.url));
@@ -30,7 +30,7 @@ const context = vm.createContext({
   document: {
     querySelector(selector) { return selector === "#catalog-section" ? section : node; },
     querySelectorAll() { return []; },
-    addEventListener(name, handler) { (listeners[name] ??= []).push(handler); },
+    addEventListener(name, handler) { (listeners[name] || (listeners[name] = [])).push(handler); },
   },
   localStorage: { setItem() {} },
   fetch() { throw new Error("Network is disabled in collect-ui-check"); },

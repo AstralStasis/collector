@@ -1,6 +1,7 @@
-import test from "node:test";
-import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import test from "./support/test.mjs";
+import { strict as assert } from "assert";
+import { randomUUID, hasOwn } from "../server/runtime.mjs";
+import fetch, { timeoutSignal } from "../scripts/http.mjs";
 import { fileURLToPath } from "node:url";
 import { createApplication } from "../server/application.mjs";
 import { readDatabaseConfig } from "../server/database-config.mjs";
@@ -8,7 +9,7 @@ import { readDatabaseConfig } from "../server/database-config.mjs";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const copy = (value) => JSON.parse(JSON.stringify(value));
 const sorted = (values) => [...values].sort();
-const uniqueUsername = () => "http_" + randomUUID().replaceAll("-", "").slice(0, 24);
+const uniqueUsername = () => "http_" + randomUUID().split("-").join("").slice(0, 24);
 
 async function fixture(t, kind) {
   const options = { root, authLimit: 100, logger: { error() {} } };
@@ -39,12 +40,12 @@ async function fixture(t, kind) {
         if (body !== undefined) headers["Content-Type"] = contentType;
         if (method !== "GET" && csrfToken !== null) headers["X-CSRF-Token"] = csrfToken;
         if (requestOrigin !== undefined) headers.Origin = requestOrigin;
-        const response = await fetch(origin + path, { method, headers, signal: AbortSignal.timeout(20000), ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+        const response = await fetch(origin + path, { method, headers, signal: timeoutSignal(20000), ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
         const payload = await response.json();
         const setCookie = response.headers.get("set-cookie");
         if (setCookie) cookie = setCookie.split(";", 1)[0];
         if (payload.csrfToken) csrf = payload.csrfToken;
-        if (payload.user?.id) users.add(payload.user.id);
+        if (payload.user && payload.user.id) users.add(payload.user.id);
         return { status: response.status, body: payload, headers: response.headers };
       },
     };
@@ -54,7 +55,7 @@ async function fixture(t, kind) {
 
 function expectStatus(response, status, code) {
   assert.equal(response.status, status, JSON.stringify(response.body));
-  if (code) assert.equal(response.body.error?.code, code);
+  if (code) assert.equal((response.body.error && response.body.error.code), code);
   return response.body;
 }
 
@@ -166,7 +167,7 @@ for (const kind of ["sqlite", "mysql"]) {
       assert.equal(registered.user.id, accountId);
       assert.equal(registered.user.username, username);
       assert.equal(registered.user.isGuest, false);
-      assert.equal(Object.hasOwn(registered.user, "password_hash"), false);
+      assert.equal(hasOwn(registered.user, "password_hash"), false);
       assert.deepEqual(registered.archive, current.archive);
       assert.equal(registered.revision, current.revision);
       assert.notEqual(browser.cookie, previousCookie);

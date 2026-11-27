@@ -1,7 +1,11 @@
 import { ArchiveApi, ArchiveSynchronizer } from "./api-client.js";
 const $ = (selector, root = document) => root.querySelector(selector);
+// Keep nullish defaults lazy and preserve optional method receivers on Node 12.
+const optional = (value, read) => value === null || value === undefined ? undefined : read(value);
+const valueOr = (value, fallback) => value === null || value === undefined ? fallback() : value;
+const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 const esc = (value) =>
-  String(value ?? "").replace(
+  String(valueOr(value, () => "")).replace(
     /[&<>"']/g,
     (c) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
@@ -199,7 +203,7 @@ function rebuildCatalogIndexes() {
   catalogByKey.clear(); catalogIndex.clear(); searchIndex.clear();
   catalog.forEach((x, index) => {
     catalogByKey.set(x.key, x); catalogIndex.set(x.key, index);
-    const raw = x.collect?.data || {};
+    const raw = optional(x.collect, entry => entry.data) || {};
     searchIndex.set(x.key, [x.name, x.english, x.source, x.sourceEnglish, x.sourceType, x.series, x.seriesAlias, x.seriesEnglish, x.jobAbbr, x.weaponType, x.command, x.cardNumber, x.id, ...itemJobs(x), raw.name, raw.description, raw.enhanced_description, ...(Array.isArray(raw.sources) ? raw.sources.map(s => s.text) : [])].join(" ").toLowerCase());
   });
 }
@@ -219,7 +223,7 @@ const itemSourceUrl = (x) => {
   return url.startsWith("https://") ? url : "https://ffxivcollect.com/";
 };
 const hasOwnedRate = (x) => typeof x.ownedRate === "number" && Number.isFinite(x.ownedRate);
-const latestItemPatch = () => catalogMeta.latestCollectiblePatch || catalogMeta.latestObtainablePatch || catalogMeta.latestItemPatch || [...catalog].sort((a, b) => parseFloat(b.patch) - parseFloat(a.patch))[0]?.patch || "—";
+const latestItemPatch = () => catalogMeta.latestCollectiblePatch || catalogMeta.latestObtainablePatch || catalogMeta.latestItemPatch || optional([...catalog].sort((a, b) => parseFloat(b.patch) - parseFloat(a.patch))[0], entry => entry.patch) || "—";
 const archiveSync = new ArchiveSynchronizer({
   getArchive: () => data,
   setArchive: (archive, remote) => {
@@ -288,7 +292,7 @@ function normalize(raw) {
   const p = raw.preferences || {},
     preferences = {
       category:
-        p.category === "weapons" ? "relics" : p.category === "all" || Object.hasOwn(categories, p.category)
+        p.category === "weapons" ? "relics" : p.category === "all" || hasOwn(categories, p.category)
           ? p.category
           : "all",
       style: ["casual", "solo", "challenge"].includes(p.style)
@@ -383,7 +387,7 @@ function exchangeCount(currency = "", expansion = "", region = "") {
   return catalog.filter((x) => matchesExchange(x, currency, expansion, region)).length;
 }
 function seriesLabel(value) {
-  const alias = catalogMeta.mindmap?.seriesAliases?.[value];
+  const alias = optional(catalogMeta.mindmap, mindmap => optional(mindmap.seriesAliases, aliases => aliases[value]));
   return alias && alias !== value ? `${alias} · ${value}` : value;
 }
 function exchangeNavButton(label, currency, expansion = "", region = "") {
@@ -394,15 +398,15 @@ function exchangeNavButton(label, currency, expansion = "", region = "") {
 function catalogNavigation() {
   const special = ["ultimates", "relics", "tools"];
   const kinds = ["mounts", "minions", "bardings", "orchestrions", "cards", "facewear", "fashions", "frames"];
-  const regions = catalogMeta.mindmap?.gemstoneRegions || {};
+  const regions = optional(catalogMeta.mindmap, mindmap => mindmap.gemstoneRegions) || {};
   return `<div class="nav-label">可兑换的独占物品</div><nav class="nav-stack">${navItem("exchange", "兑换物品总览", "folder", exchangeCount())}<details class="nav-tree" ${view === "exchange" && exchangeCurrency === "gemstones" ? "open" : ""}><summary>双色宝石 <small>${exchangeCount("gemstones")}</small></summary>${exchangeNavButton("全部双色兑换", "gemstones")}${Object.entries(regions).map(([version, areas]) => `<details class="nav-tree nested" ${exchangeExpansion === version ? "open" : ""}><summary>${esc(version)} 版本</summary>${exchangeNavButton("本版本全部", "gemstones", version)}${areas.map((area) => exchangeNavButton(area, "gemstones", version, area)).join("")}</details>`).join("")}</details>${exchangeNavButton("金碟币", "mgp")}<details class="nav-tree" ${view === "exchange" && ["allied", "centurio", "nuts"].includes(exchangeCurrency) ? "open" : ""}><summary>狩猎点数</summary>${["allied", "centurio", "nuts"].map((key) => exchangeNavButton(exchangeCurrencies[key], key)).join("")}</details></nav><div class="nav-label">特殊装备</div><nav class="nav-stack">${special.map((id) => navItem(id, categories[id].title, categories[id].icon, catalog.filter((x) => x.category === id).length)).join("")}</nav><div class="nav-label">收集物品类型</div><nav class="nav-stack">${kinds.map((id) => navItem(id, categories[id].title, categories[id].icon, catalog.filter((x) => x.category === id).length)).join("")}</nav><div class="nav-label">补充收藏</div><nav class="nav-stack">${navItem("emotes", "表情动作", "emote", catalog.filter((x) => x.category === "emotes").length)}</nav>`;
 }
 function exchangeFiltersHtml() {
   if (view !== "exchange") return "";
-  const regions = catalogMeta.mindmap?.gemstoneRegions || {};
-  if (!Object.hasOwn(exchangeCurrencies, exchangeCurrency)) exchangeCurrency = "";
+  const regions = optional(catalogMeta.mindmap, mindmap => mindmap.gemstoneRegions) || {};
+  if (!hasOwn(exchangeCurrencies, exchangeCurrency)) exchangeCurrency = "";
   if (exchangeCurrency !== "gemstones") { exchangeExpansion = ""; exchangeRegion = ""; }
-  if (exchangeExpansion && !Object.hasOwn(regions, exchangeExpansion)) exchangeExpansion = "";
+  if (exchangeExpansion && !hasOwn(regions, exchangeExpansion)) exchangeExpansion = "";
   const areas = exchangeExpansion ? regions[exchangeExpansion] : Object.values(regions).flat();
   if (exchangeRegion && !areas.includes(exchangeRegion)) exchangeRegion = "";
   return `<section class="exchange-panel" aria-label="兑换清单筛选"><div><strong>${icon("folder")} 可兑换的独占物品列表</strong><p>按导图中的货币、版本和地区查找；只统计已核实兑换来源的收藏。</p></div><div class="filter-panel exchange-options"><label>兑换货币 <select id="exchange-currency" aria-label="兑换货币"><option value="">全部货币</option>${["gemstones", "mgp"].map((key) => `<option value="${key}" ${exchangeCurrency === key ? "selected" : ""}>${exchangeCurrencies[key]}</option>`).join("")}<optgroup label="狩猎点数">${["allied", "centurio", "nuts"].map((key) => `<option value="${key}" ${exchangeCurrency === key ? "selected" : ""}>${exchangeCurrencies[key]}</option>`).join("")}</optgroup></select></label>${exchangeCurrency === "gemstones" ? `<label>双色版本 <select id="exchange-expansion" aria-label="双色版本"><option value="">全部版本</option>${selectOptions(Object.keys(regions), exchangeExpansion)}</select></label><label>兑换地区 <select id="exchange-region" aria-label="兑换地区"><option value="">全部地区</option>${selectOptions(areas, exchangeRegion)}</select></label>` : ""}</div></section>`;
@@ -418,7 +422,7 @@ function render() {
     exchange: "可兑换的独占物品",
   };
   $("#app").innerHTML =
-    `<div class="mobile-overlay" data-action="close-menu"></div><aside class="sidebar" aria-label="主要导航"><button class="brand" data-action="navigate" data-view="overview" aria-label="光之藏馆首页"><span class="brand-symbol">${icon("star")}</span><span><h1>光之藏馆</h1><small>EORZEA ARCHIVE</small></span></button><div class="nav-label">你的冒险手记</div><nav class="nav-stack">${navItem("overview", "收藏总览", "grid")}${navItem("wishlist", "我的心愿单", "heart", data.wishlist.length, true)}${navItem("plan", "收集计划", "route", data.plan.filter((k) => !ownedKeys.has(k)).length)}</nav>${catalogNavigation()}<div class="nav-label">成长记录</div><nav class="nav-stack">${navItem("progress", "收藏进度", "trophy")}</nav><div class="sidebar-bottom"><div class="sidebar-note">${icon("feather")}<strong>每一份热爱，都有回响</strong><p>不必急着抵达终点。<br>下一份珍藏，就在下一段旅途。</p><button data-action="planner">寻找收藏灵感 ${icon("arrow")}</button></div><button class="save-status" data-action="profile"><span class="dot"></span><span data-sync-status>${esc(archiveSync.state.message)}</span></button><div class="sidebar-footer">${icon("settings")}<button data-action="profile">档案设置</button><span>v1.0</span></div></div></aside><div class="app-shell"><header class="topbar"><button class="icon-btn mobile-menu" data-action="open-menu" aria-label="打开导航">${icon("menu")}</button><div class="breadcrumb">${icon("home")}<span>我的藏馆</span><span class="slash">/</span><span>${titles[view] || categories[view]?.title || "收藏总览"}</span></div><div class="top-actions"><label class="global-search">${icon("search")}<input id="global-search" type="search" autocomplete="off" maxlength="80" placeholder="搜索藏品、名称或获取方式…" value="${esc(query)}" aria-label="搜索全部藏品"><kbd>Ctrl K</kbd></label><button class="icon-btn notice-button" data-action="activity" aria-label="查看收藏动态">${icon("bell")}</button><button class="profile-button" data-action="profile"><span class="profile-avatar">光</span><div><strong>${esc(data.profile.name)}</strong><small>${data.profile.demo ? "演示档案 · " : ""}收藏家</small></div>${icon("down")}</button></div></header><main id="main" class="main" tabindex="-1"></main></div>`;
+    `<div class="mobile-overlay" data-action="close-menu"></div><aside class="sidebar" aria-label="主要导航"><button class="brand" data-action="navigate" data-view="overview" aria-label="光之藏馆首页"><span class="brand-symbol">${icon("star")}</span><span><h1>光之藏馆</h1><small>EORZEA ARCHIVE</small></span></button><div class="nav-label">你的冒险手记</div><nav class="nav-stack">${navItem("overview", "收藏总览", "grid")}${navItem("wishlist", "我的心愿单", "heart", data.wishlist.length, true)}${navItem("plan", "收集计划", "route", data.plan.filter((k) => !ownedKeys.has(k)).length)}</nav>${catalogNavigation()}<div class="nav-label">成长记录</div><nav class="nav-stack">${navItem("progress", "收藏进度", "trophy")}</nav><div class="sidebar-bottom"><div class="sidebar-note">${icon("feather")}<strong>每一份热爱，都有回响</strong><p>不必急着抵达终点。<br>下一份珍藏，就在下一段旅途。</p><button data-action="planner">寻找收藏灵感 ${icon("arrow")}</button></div><button class="save-status" data-action="profile"><span class="dot"></span><span data-sync-status>${esc(archiveSync.state.message)}</span></button><div class="sidebar-footer">${icon("settings")}<button data-action="profile">档案设置</button><span>v1.0</span></div></div></aside><div class="app-shell"><header class="topbar"><button class="icon-btn mobile-menu" data-action="open-menu" aria-label="打开导航">${icon("menu")}</button><div class="breadcrumb">${icon("home")}<span>我的藏馆</span><span class="slash">/</span><span>${titles[view] || optional(categories[view], entry => entry.title) || "收藏总览"}</span></div><div class="top-actions"><label class="global-search">${icon("search")}<input id="global-search" type="search" autocomplete="off" maxlength="80" placeholder="搜索藏品、名称或获取方式…" value="${esc(query)}" aria-label="搜索全部藏品"><kbd>Ctrl K</kbd></label><button class="icon-btn notice-button" data-action="activity" aria-label="查看收藏动态">${icon("bell")}</button><button class="profile-button" data-action="profile"><span class="profile-avatar">光</span><div><strong>${esc(data.profile.name)}</strong><small>${data.profile.demo ? "演示档案 · " : ""}收藏家</small></div>${icon("down")}</button></div></header><main id="main" class="main" tabindex="-1"></main></div>`;
   renderMain();
 }
 function ring() {
@@ -459,9 +463,9 @@ function renderMain() {
   renderCatalog();
 }
 function pageHeading() {
-  if (view === "exchange") return `<div class="page-heading"><div class="eyebrow">EXCLUSIVE EXCHANGE COLLECTIONS</div><h2>可兑换的独占物品列表</h2><p>双色宝石、金碟币与三类狩猎货币 · 已收录 ${exchangeCount()} 件兑换独占收藏</p><a class="text-btn" href="${esc(catalogMeta.mindmap?.source || "https://docs.qq.com/mind/DQ21qZGxMamNMYUJV")}" target="_blank" rel="noopener noreferrer">分类依据：收藏站思维导图 ${icon("external")}</a></div>`;
+  if (view === "exchange") return `<div class="page-heading"><div class="eyebrow">EXCLUSIVE EXCHANGE COLLECTIONS</div><h2>可兑换的独占物品列表</h2><p>双色宝石、金碟币与三类狩猎货币 · 已收录 ${exchangeCount()} 件兑换独占收藏</p><a class="text-btn" href="${esc(optional(catalogMeta.mindmap, mindmap => mindmap.source) || "https://docs.qq.com/mind/DQ21qZGxMamNMYUJV")}" target="_blank" rel="noopener noreferrer">分类依据：收藏站思维导图 ${icon("external")}</a></div>`;
   const c = categories[view];
-  return `<div class="page-heading"><div class="eyebrow">${view === "wishlist" ? "SAVED FOR YOUR NEXT ADVENTURE" : view === "explore" ? "FIND YOUR NEXT FAVORITE" : c?.english || "YOUR COLLECTION"}</div><div class="heading-row"><div><h2>${view === "wishlist" ? "把心动，留给下一场冒险" : view === "explore" ? "寻找属于你的珍藏" : c?.title}</h2><p>${view === "wishlist" ? "这里住着你想带回家的珍藏。收藏后会自动从心愿单移除。" : view === "explore" ? `搜索「${esc(query)}」· 支持中文、英文及获取途径` : `${catalog.filter((x) => x.category === view).length} 件${c?.name} · 已点亮 ${countOwned(view)} 件 · 收藏进度由你亲手记录`}</p></div><button class="primary-btn" data-action="planner">${icon("sparkles")} 智能收集规划</button></div></div>`;
+  return `<div class="page-heading"><div class="eyebrow">${view === "wishlist" ? "SAVED FOR YOUR NEXT ADVENTURE" : view === "explore" ? "FIND YOUR NEXT FAVORITE" : optional(c, entry => entry.english) || "YOUR COLLECTION"}</div><div class="heading-row"><div><h2>${view === "wishlist" ? "把心动，留给下一场冒险" : view === "explore" ? "寻找属于你的珍藏" : optional(c, entry => entry.title)}</h2><p>${view === "wishlist" ? "这里住着你想带回家的珍藏。收藏后会自动从心愿单移除。" : view === "explore" ? `搜索「${esc(query)}」· 支持中文、英文及获取途径` : `${catalog.filter((x) => x.category === view).length} 件${optional(c, entry => entry.name)} · 已点亮 ${countOwned(view)} 件 · 收藏进度由你亲手记录`}</p></div><button class="primary-btn" data-action="planner">${icon("sparkles")} 智能收集规划</button></div></div>`;
 }
 function rightRail() {
   const wishes = data.wishlist.map(find).filter(Boolean).slice(0, 3);
@@ -473,9 +477,9 @@ function baseItems() {
       (category === "all" || x.category === category) &&
       matchesCollectionScope(x) &&
       (!query ||
-        searchIndex.get(x.key)?.includes(query.toLowerCase())) &&
+        optional(searchIndex.get(x.key), entry => entry.includes(query.toLowerCase()))) &&
       (!source || x.sourceType === source) &&
-      (!patchFilter || String(x.patch ?? "").startsWith(patchFilter)) &&
+      (!patchFilter || String(valueOr(x.patch, () => "")).startsWith(patchFilter)) &&
       (!jobFilter || itemJobs(x).includes(jobFilter)) &&
       (!seriesFilter || x.series === seriesFilter),
   );
@@ -507,9 +511,9 @@ function cascadingFilterOptions() {
     ["5.", "暗影之逆焰 5.x"],
     ["6.", "晓月之终途 6.x"],
     ["7.", "黄金的遗产 7.x"],
-  ].filter(([prefix]) => sourceItems.some((x) => String(x.patch ?? "").startsWith(prefix)));
+  ].filter(([prefix]) => sourceItems.some((x) => String(valueOr(x.patch, () => "")).startsWith(prefix)));
   if (patchFilter && !patches.some(([prefix]) => prefix === patchFilter)) patchFilter = "";
-  const patchItems = sourceItems.filter((x) => !patchFilter || String(x.patch ?? "").startsWith(patchFilter));
+  const patchItems = sourceItems.filter((x) => !patchFilter || String(valueOr(x.patch, () => "")).startsWith(patchFilter));
   const series = [...new Set(patchItems.map((x) => x.series).filter(Boolean))];
   if (seriesFilter && !series.includes(seriesFilter)) seriesFilter = "";
   const seriesItems = patchItems.filter((x) => !seriesFilter || x.series === seriesFilter);
@@ -527,7 +531,7 @@ function renderCatalog() {
   const base = baseItems(),
     items = filteredItems(),
     owned = base.filter((x) => ownedKeys.has(x.key)).length;
-  section.innerHTML = `${exchangeFilters}<div class="section-title"><h2 id="catalog-title">${icon(view === "wishlist" ? "heart" : "compass")}${view === "wishlist" ? "我的心愿珍藏" : view === "overview" ? "探索你的下一份珍藏" : view === "explore" ? "图鉴搜索结果" : view === "exchange" ? "兑换收藏图鉴" : categories[view]?.title}</h2><button class="text-btn" data-action="filter-toggle">${icon("filter")} 筛选藏品</button></div><p class="catalog-subtitle">${view === "overview" ? "那些尚未相遇的风景，正等待着你。" : `找到 ${items.length} 件藏品 · 点击卡片查看获取途径`}</p><div class="catalog-update"><span>${icon("refresh")} 国际服 ${esc(catalogMeta.latestReleasedPatch || "—")} · 已收录至 ${esc(latestItemPatch())} 版本藏品 · 共 ${catalog.length} 件 · ${esc(catalogUpdatedAt())}</span><button class="text-btn" data-action="latest">探索 7.x 新藏品 ${icon("arrow")}</button></div><div class="tabs" role="tablist" aria-label="图鉴分类">${[["all", "全部藏品"], ...Object.entries(categories).map(([id, c]) => [id, c.name])].map(([id, name]) => `<button class="tab ${category === id ? "active" : ""}" role="tab" aria-selected="${category === id}" data-action="tab" data-category="${id}">${name}<small>${catalog.filter((x) => (id === "all" || x.category === id) && matchesCollectionScope(x)).length}</small></button>`).join("")}</div><div class="filters"><div class="filter-left">${[
+  section.innerHTML = `${exchangeFilters}<div class="section-title"><h2 id="catalog-title">${icon(view === "wishlist" ? "heart" : "compass")}${view === "wishlist" ? "我的心愿珍藏" : view === "overview" ? "探索你的下一份珍藏" : view === "explore" ? "图鉴搜索结果" : view === "exchange" ? "兑换收藏图鉴" : optional(categories[view], entry => entry.title)}</h2><button class="text-btn" data-action="filter-toggle">${icon("filter")} 筛选藏品</button></div><p class="catalog-subtitle">${view === "overview" ? "那些尚未相遇的风景，正等待着你。" : `找到 ${items.length} 件藏品 · 点击卡片查看获取途径`}</p><div class="catalog-update"><span>${icon("refresh")} 国际服 ${esc(catalogMeta.latestReleasedPatch || "—")} · 已收录至 ${esc(latestItemPatch())} 版本藏品 · 共 ${catalog.length} 件 · ${esc(catalogUpdatedAt())}</span><button class="text-btn" data-action="latest">探索 7.x 新藏品 ${icon("arrow")}</button></div><div class="tabs" role="tablist" aria-label="图鉴分类">${[["all", "全部藏品"], ...Object.entries(categories).map(([id, c]) => [id, c.name])].map(([id, name]) => `<button class="tab ${category === id ? "active" : ""}" role="tab" aria-selected="${category === id}" data-action="tab" data-category="${id}">${name}<small>${catalog.filter((x) => (id === "all" || x.category === id) && matchesCollectionScope(x)).length}</small></button>`).join("")}</div><div class="filters"><div class="filter-left">${[
     ["all", "全部", base.length],
     ["missing", "未收藏", base.length - owned],
     ["owned", "已收藏", owned],
@@ -555,7 +559,7 @@ function card(x, index) {
   const isOwned = ownedKeys.has(x.key),
     isWish = wishlistKeys.has(x.key);
   const color = itemColor(x);
-  return `<article class="collectible" style="--item-color:${color};animation-delay:${Math.min(index, 9) * 25}ms"><button class="card-heart ${isWish ? "selected" : ""}" data-action="wish-toggle" data-key="${esc(x.key)}" aria-label="${isWish ? "从心愿单移除" : "加入心愿单"}${esc(x.name)}" aria-pressed="${isWish}">${icon("heart")}</button><button class="card-open" data-action="detail" data-key="${esc(x.key)}" aria-label="查看${esc(x.name)}详情"><div class="card-art ${["relics", "ultimates", "tools", "bardings", "cards", "facewear", "fashions", "frames"].includes(x.category) ? "equipment-art" : x.category === "orchestrions" ? "music-art" : x.category === "emotes" ? "emote-art" : ""}"><span class="card-badge ${isOwned ? "owned" : ""}">${isOwned ? icon("check") + " 已收藏" : "PATCH " + x.patch}</span><img src="${esc(x.image)}" alt="${esc(x.name)}" loading="lazy" width="192" height="192"></div><div class="card-info"><h3>${esc(x.name)}</h3><span class="english">${x.name === x.english ? (x.collect?.data ? "API 名称" : "原始名称") : esc(x.english)}</span>${x.series ? `<div class="equipment-tags"><span>${esc(itemJobs(x).join(" / "))}</span><span>${esc(x.series)}</span></div>` : ""}<div class="card-source"><span>${icon(x.sourceType === "商城特典" ? "star" : x.sourceType === "金碟游乐场" ? "trophy" : "compass")} ${esc(x.sourceType)}</span><span>${categories[x.category].name}</span></div></div></button><div class="card-foot"><button class="owned-btn ${isOwned ? "is-owned" : ""}" data-action="owned-toggle" data-key="${esc(x.key)}" aria-pressed="${isOwned}" aria-label="${isOwned ? "取消收藏" : "标记已收藏"}${esc(x.name)}">${icon(isOwned ? "checkcircle" : "circle")} ${isOwned ? "已收入藏馆" : "标记已收藏"}</button><span>NO. ${String(x.id).padStart(3, "0")}</span></div></article>`;
+  return `<article class="collectible" style="--item-color:${color};animation-delay:${Math.min(index, 9) * 25}ms"><button class="card-heart ${isWish ? "selected" : ""}" data-action="wish-toggle" data-key="${esc(x.key)}" aria-label="${isWish ? "从心愿单移除" : "加入心愿单"}${esc(x.name)}" aria-pressed="${isWish}">${icon("heart")}</button><button class="card-open" data-action="detail" data-key="${esc(x.key)}" aria-label="查看${esc(x.name)}详情"><div class="card-art ${["relics", "ultimates", "tools", "bardings", "cards", "facewear", "fashions", "frames"].includes(x.category) ? "equipment-art" : x.category === "orchestrions" ? "music-art" : x.category === "emotes" ? "emote-art" : ""}"><span class="card-badge ${isOwned ? "owned" : ""}">${isOwned ? icon("check") + " 已收藏" : "PATCH " + x.patch}</span><img src="${esc(x.image)}" alt="${esc(x.name)}" loading="lazy" width="192" height="192"></div><div class="card-info"><h3>${esc(x.name)}</h3><span class="english">${x.name === x.english ? (optional(x.collect, entry => entry.data) ? "API 名称" : "原始名称") : esc(x.english)}</span>${x.series ? `<div class="equipment-tags"><span>${esc(itemJobs(x).join(" / "))}</span><span>${esc(x.series)}</span></div>` : ""}<div class="card-source"><span>${icon(x.sourceType === "商城特典" ? "star" : x.sourceType === "金碟游乐场" ? "trophy" : "compass")} ${esc(x.sourceType)}</span><span>${categories[x.category].name}</span></div></div></button><div class="card-foot"><button class="owned-btn ${isOwned ? "is-owned" : ""}" data-action="owned-toggle" data-key="${esc(x.key)}" aria-pressed="${isOwned}" aria-label="${isOwned ? "取消收藏" : "标记已收藏"}${esc(x.name)}">${icon(isOwned ? "checkcircle" : "circle")} ${isOwned ? "已收入藏馆" : "标记已收藏"}</button><span>NO. ${String(x.id).padStart(3, "0")}</span></div></article>`;
 }
 function emptyState(title, text, act, label) {
   return `<div class="empty-state">${icon("compass")}<h3>${title}</h3><p>${text}</p><button class="secondary-btn" data-action="${act}">${label} ${icon("arrow")}</button></div>`;
@@ -582,11 +586,11 @@ function navigate(next) {
   exchangeExpansion = "";
   exchangeRegion = "";
   view =
-    Object.hasOwn(categories, next) ||
+    hasOwn(categories, next) ||
     ["overview", "wishlist", "plan", "progress", "explore", "exchange"].includes(next)
       ? next
       : "overview";
-  category = Object.hasOwn(categories, view)
+  category = hasOwn(categories, view)
     ? view
     : view === "overview"
       ? "mounts"
@@ -654,7 +658,7 @@ function showModal(content, type, extra = "", remember = true) {
   $("#app").inert = true;
   $("#modal-root").innerHTML =
     `<div class="modal-backdrop" data-action="backdrop"><section class="modal ${extra}" role="dialog" aria-modal="true" aria-labelledby="modal-title" tabindex="-1"><button class="icon-btn modal-close" data-action="close-modal" aria-label="关闭窗口">${icon("close")}</button>${content}</section></div>`;
-  queueMicrotask(() => $(".modal")?.focus());
+  queueMicrotask(() => optional($(".modal"), entry => entry.focus()));
 }
 function closeModal(restore = true) {
   activeModal = null;
@@ -663,16 +667,16 @@ function closeModal(restore = true) {
   $("#modal-root").innerHTML = "";
   document.body.classList.remove("body-modal");
   $("#app").inert = false;
-  if (restore && returnFocus?.isConnected) returnFocus.focus();
-  else if (restore) $("#global-search")?.focus();
+  if (restore && optional(returnFocus, entry => entry.isConnected)) returnFocus.focus();
+  else if (restore) optional($("#global-search"), entry => entry.focus());
 }
 const apiValuePresent = (value) => value !== undefined && value !== null && value !== "";
-const rawCollectData = (item) => item.collect?.data && typeof item.collect.data === "object" ? item.collect.data : {};
+const rawCollectData = (item) => optional(item.collect, entry => entry.data) && typeof item.collect.data === "object" ? item.collect.data : {};
 function apiValueText(value) {
   if (typeof value === "boolean") return value ? "是" : "否";
   if (Array.isArray(value)) return value.map(apiValueText).join(" / ");
   if (value && typeof value === "object") return Object.entries(value).filter(([, v]) => apiValuePresent(v)).map(([k, v]) => `${({ id: "编号", name: "名称", top: "上", right: "右", bottom: "下", left: "左" })[k] || k}：${apiValueText(v)}`).join(" · ");
-  return String(value ?? "");
+  return String(valueOr(value, () => ""));
 }
 function apiFactsHtml(entries) {
   const facts = entries.filter(([, value]) => apiValuePresent(value));
@@ -680,16 +684,16 @@ function apiFactsHtml(entries) {
 }
 function collectDetailsHtml(x) {
   const raw = rawCollectData(x), parts = [];
-  const enhanced = x.enhancedDescription ?? raw.enhanced_description;
-  const tooltip = x.tooltip ?? raw.tooltip;
+  const enhanced = valueOr(x.enhancedDescription, () => raw.enhanced_description);
+  const tooltip = valueOr(x.tooltip, () => raw.tooltip);
   if (enhanced && enhanced !== x.description) parts.push(`<section class="detail-source"><h3>背景资料</h3><p class="api-text">${esc(enhanced)}</p></section>`);
   if (tooltip) parts.push(`<blockquote class="detail-quote">${esc(tooltip)}</blockquote>`);
-  const facts = [["物品 ID", x.itemId ?? raw.item_id ?? (["relics", "ultimates", "tools"].includes(x.category) ? x.id : undefined)], ["编号", x.cardNumber ?? raw.number], ["资料分类", raw.category], ["动作指令", x.command ?? raw.command], ["可交易", raw.tradeable ?? x.tradeable]];
+  const facts = [["物品 ID", valueOr(x.itemId, () => valueOr(raw.item_id, () => (["relics", "ultimates", "tools"].includes(x.category) ? x.id : undefined)))], ["编号", valueOr(x.cardNumber, () => raw.number)], ["资料分类", raw.category], ["动作指令", valueOr(x.command, () => raw.command)], ["可交易", valueOr(raw.tradeable, () => x.tradeable)]];
   if (x.category === "mounts") facts.push(["移动方式", raw.movement], ["座位数", raw.seats], ["自带音乐", raw.custom_music]);
   if (x.category === "minions") facts.push(["行为", raw.behavior], ["种族", raw.race]);
   if (x.category === "cards") {
-    const stats = raw.stats?.formatted ?? raw.stats?.numeric ?? x.cardStats;
-    facts.push(["星级", x.stars ?? raw.stars ?? raw.rarity?.stars ?? raw.rarity], ["点数", stats], ["卖价", raw.sell_price ?? raw.sale_price], ["卡牌类型", raw.type]);
+    const stats = valueOr(optional(raw.stats, entry => entry.formatted), () => valueOr(optional(raw.stats, entry => entry.numeric), () => x.cardStats));
+    facts.push(["星级", valueOr(x.stars, () => valueOr(raw.stars, () => valueOr(optional(raw.rarity, entry => entry.stars), () => raw.rarity)))], ["点数", stats], ["卖价", valueOr(raw.sell_price, () => raw.sale_price)], ["卡牌类型", raw.type]);
   }
   const factsHtml = apiFactsHtml(facts);
   if (factsHtml) parts.push(`<section class="detail-source"><h3>藏品资料</h3>${factsHtml}</section>`);
@@ -698,8 +702,8 @@ function collectDetailsHtml(x) {
     parts.push(`<section class="detail-source"><h3>萌宠之王</h3>${apiFactsHtml(Object.entries(raw.verminion).map(([key, value]) => [labels[key] || key, value]))}</section>`);
   }
   if (x.category === "frames" && !Array.isArray(raw.sources)) parts.push('<p class="detail-note">FFXIV Collect API 未提供此肖像教材的获取来源；现有来源记录请以游戏内为准。可交易状态等缺失字段属于未知，不代表“否”。</p>');
-  if (!x.collect?.data) parts.push('<p class="detail-note">FFXIV Collect API 尚未覆盖此条目，保留已有资料。</p>');
-  if (x.collect?.data) parts.push(`<details class="detail-raw"><summary>查看完整 API 资料</summary><pre>${esc(JSON.stringify(raw, null, 2))}</pre></details>`);
+  if (!optional(x.collect, entry => entry.data)) parts.push('<p class="detail-note">FFXIV Collect API 尚未覆盖此条目，保留已有资料。</p>');
+  if (optional(x.collect, entry => entry.data)) parts.push(`<details class="detail-raw"><summary>查看完整 API 资料</summary><pre>${esc(JSON.stringify(raw, null, 2))}</pre></details>`);
   return parts.join("");
 }
 function collectSourcesHtml(x) {
@@ -717,7 +721,7 @@ function openDetail(key, remember = true) {
     plan = planKeys.has(key);
   const detailImage = typeof x.previewImage === "string" && /^\/?assets\//.test(x.previewImage) ? x.previewImage : x.image;
   showModal(
-    `<div class="detail-art ${["emotes", "orchestrions", "relics", "ultimates", "tools", "bardings", "cards", "facewear", "fashions", "frames"].includes(x.category) ? "icon-detail" : ""}" style="--item-color:${itemColor(x)}"><img src="${esc(detailImage)}" alt="${esc(x.name)}"></div><div class="detail-content"><span class="tag">${categories[x.category].name} · PATCH ${esc(x.patch)}</span><h2 id="modal-title">${esc(x.name)}</h2><span class="english">${x.name === x.english ? (x.collect?.data ? "API 名称" : "原始名称") : esc(x.english)}</span>${x.series ? `<div class="detail-equipment-meta"><span class="tag">${esc(x.series)}</span><span class="tag">${esc(itemJobs(x).join(" / "))}</span>${x.stage ? `<span class="tag">${esc(x.stage)}</span>` : ""}</div>` : ""}${x.canonicalName && x.canonicalName !== x.name ? `<p class="detail-canonical">资料库名称：${esc(x.canonicalName)}</p>` : ""}<p class="description">${esc(x.description)}</p>${collectDetailsHtml(x)}<div class="detail-source"><h3>${icon("compass")} 获取途径</h3><p>${esc(x.source)}</p>${x.command ? `<p style="margin-top:7px;color:#bfa87a">动作指令：${esc(x.command)}</p>` : ""}${collectSourcesHtml(x)}</div><div class="detail-meta"><span>${hasOwnedRate(x) ? `社区持有率 ${x.ownedRate}%` : "社区持有率：暂无数据"}</span><span>资料编号 #${x.id}</span><a href="${esc(itemSourceUrl(x))}" target="_blank" rel="noopener noreferrer">原始资料 ${icon("external")}</a>${x.nameSource ? `<a href="${esc(x.nameSource)}" target="_blank" rel="noopener noreferrer">中文名依据 ${icon("external")}</a>` : ""}</div><div class="detail-actions"><button class="primary-btn" data-action="owned-toggle" data-key="${esc(x.key)}">${icon(owned ? "checkcircle" : "plus")} ${owned ? "已收藏 · 点击取消" : "标记为已收藏"}</button><button class="secondary-btn" data-action="wish-toggle" data-key="${esc(x.key)}" ${owned ? "disabled" : ""}>${icon("heart")} ${wish ? "移出心愿单" : "加入心愿单"}</button><button class="secondary-btn" data-action="plan-toggle" data-key="${esc(x.key)}">${icon("route")} ${plan ? "移出收集计划" : "加入收集计划"}</button></div><p class="detail-note">资料供规划参考，获取条件以游戏内为准。武器与工具按物品独立记录；系列筛选不代表已收录每一中间强化阶段。中文名称未核实时保留英文。持有率仅在来源提供时显示，不代表掉落率。</p></div>`,
+    `<div class="detail-art ${["emotes", "orchestrions", "relics", "ultimates", "tools", "bardings", "cards", "facewear", "fashions", "frames"].includes(x.category) ? "icon-detail" : ""}" style="--item-color:${itemColor(x)}"><img src="${esc(detailImage)}" alt="${esc(x.name)}"></div><div class="detail-content"><span class="tag">${categories[x.category].name} · PATCH ${esc(x.patch)}</span><h2 id="modal-title">${esc(x.name)}</h2><span class="english">${x.name === x.english ? (optional(x.collect, entry => entry.data) ? "API 名称" : "原始名称") : esc(x.english)}</span>${x.series ? `<div class="detail-equipment-meta"><span class="tag">${esc(x.series)}</span><span class="tag">${esc(itemJobs(x).join(" / "))}</span>${x.stage ? `<span class="tag">${esc(x.stage)}</span>` : ""}</div>` : ""}${x.canonicalName && x.canonicalName !== x.name ? `<p class="detail-canonical">资料库名称：${esc(x.canonicalName)}</p>` : ""}<p class="description">${esc(x.description)}</p>${collectDetailsHtml(x)}<div class="detail-source"><h3>${icon("compass")} 获取途径</h3><p>${esc(x.source)}</p>${x.command ? `<p style="margin-top:7px;color:#bfa87a">动作指令：${esc(x.command)}</p>` : ""}${collectSourcesHtml(x)}</div><div class="detail-meta"><span>${hasOwnedRate(x) ? `社区持有率 ${x.ownedRate}%` : "社区持有率：暂无数据"}</span><span>资料编号 #${x.id}</span><a href="${esc(itemSourceUrl(x))}" target="_blank" rel="noopener noreferrer">原始资料 ${icon("external")}</a>${x.nameSource ? `<a href="${esc(x.nameSource)}" target="_blank" rel="noopener noreferrer">中文名依据 ${icon("external")}</a>` : ""}</div><div class="detail-actions"><button class="primary-btn" data-action="owned-toggle" data-key="${esc(x.key)}">${icon(owned ? "checkcircle" : "plus")} ${owned ? "已收藏 · 点击取消" : "标记为已收藏"}</button><button class="secondary-btn" data-action="wish-toggle" data-key="${esc(x.key)}" ${owned ? "disabled" : ""}>${icon("heart")} ${wish ? "移出心愿单" : "加入心愿单"}</button><button class="secondary-btn" data-action="plan-toggle" data-key="${esc(x.key)}">${icon("route")} ${plan ? "移出收集计划" : "加入收集计划"}</button></div><p class="detail-note">资料供规划参考，获取条件以游戏内为准。武器与工具按物品独立记录；系列筛选不代表已收录每一中间强化阶段。中文名称未核实时保留英文。持有率仅在来源提供时显示，不代表掉落率。</p></div>`,
     "detail",
     "",
     remember,
@@ -752,7 +756,7 @@ function openPlanner(style) {
   preferenceDraft = {
     ...data.preferences,
     ...(style ? { style } : {}),
-    category: Object.hasOwn(categories, view)
+    category: hasOwn(categories, view)
       ? view
       : data.preferences.category,
   };
@@ -874,7 +878,7 @@ document.addEventListener("click", (event) => {
   }
   if (a === "load-more") {
     const previous = visibleLimit; visibleLimit += 96; renderCatalog();
-    $(".collection-grid")?.querySelectorAll(".card-open")[previous]?.focus();
+    optional($(".collection-grid"), grid => optional(grid.querySelectorAll(".card-open")[previous], entry => entry.focus()));
     return;
   }
   if (a === "navigate") return navigate(el.dataset.view);
@@ -900,7 +904,7 @@ document.addEventListener("click", (event) => {
   }
   if (a === "exchange-track") {
     navigate("exchange");
-    exchangeCurrency = Object.hasOwn(exchangeCurrencies, el.dataset.currency) ? el.dataset.currency : "";
+    exchangeCurrency = hasOwn(exchangeCurrencies, el.dataset.currency) ? el.dataset.currency : "";
     exchangeExpansion = el.dataset.expansion || "";
     exchangeRegion = el.dataset.region || "";
     render();
@@ -913,24 +917,24 @@ document.addEventListener("click", (event) => {
     sort = "patch";
     showFilters = true;
     renderCatalog();
-    $("#catalog-section")?.scrollIntoView({ block: "start" });
+    optional($("#catalog-section"), entry => entry.scrollIntoView({ block: "start" }));
     return;
   }
   if (a === "discover") {
-    $("#catalog-section")?.scrollIntoView({
+    optional($("#catalog-section"), entry => entry.scrollIntoView({
       behavior: "smooth",
       block: "start",
-    });
+    }));
     return;
   }
   if (a === "tab") {
     const targetCategory = el.dataset.category;
-    if (Object.hasOwn(categories, view)) {
+    if (hasOwn(categories, view)) {
       if (targetCategory === "all") {
         navigate("overview");
         category = "all";
         renderCatalog();
-        $("#catalog-section")?.scrollIntoView({ block: "start" });
+        optional($("#catalog-section"), entry => entry.scrollIntoView({ block: "start" }));
       } else {
         navigate(targetCategory);
       }
@@ -982,7 +986,7 @@ document.addEventListener("click", (event) => {
   }
   if (a === "browse") return navigate("overview");
   if (a === "export") return exportData();
-  if (a === "import") return $("#import-file")?.click();
+  if (a === "import") return optional($("#import-file"), entry => entry.click());
   if (a === "clear-request") return openClearConfirm();
   if (a === "clear-confirm") {
     data = {
@@ -1114,7 +1118,7 @@ document.addEventListener("change", async (event) => {
 document.addEventListener("submit", (event) => {
   if (event.target.id === "account-form") {
     event.preventDefault();
-    void submitAccount(event.target, event.submitter?.value === "register" ? "register" : "login");
+    void submitAccount(event.target, optional(event.submitter, entry => entry.value) === "register" ? "register" : "login");
     return;
   }
   if (event.target.id === "profile-form") {
@@ -1148,13 +1152,13 @@ document.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
     event.preventDefault();
     if (activeModal) closeModal(false);
-    $("#global-search")?.focus();
-    $("#global-search")?.select();
+    optional($("#global-search"), entry => entry.focus());
+    optional($("#global-search"), entry => entry.select());
   }
   if (event.key === "Escape") {
     if (activeModal) closeModal();
-    $(".sidebar")?.classList.remove("open");
-    $(".mobile-overlay")?.classList.remove("visible");
+    optional($(".sidebar"), entry => entry.classList.remove("open"));
+    optional($(".mobile-overlay"), entry => entry.classList.remove("visible"));
   }
   if (event.key === "Tab" && activeModal) {
     const els = [
@@ -1163,7 +1167,7 @@ document.addEventListener("keydown", (event) => {
         ),
       ].filter((x) => x.offsetParent !== null),
       first = els[0],
-      last = els.at(-1);
+      last = els[els.length - 1];
     if (!els.length) return;
     if (
       event.shiftKey &&
@@ -1191,13 +1195,13 @@ document.addEventListener("keydown", (event) => {
       n =
         (i + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
     tabs[n].click();
-    document.querySelectorAll('[role="tab"]')[n]?.focus();
+    optional(document.querySelectorAll('[role="tab"]')[n], entry => entry.focus());
   }
 });
 window.addEventListener("hashchange", () => {
   const next = location.hash.slice(1);
   if (next === "main") {
-    $("#main")?.focus();
+    optional($("#main"), entry => entry.focus());
     return;
   }
   navigate(next);

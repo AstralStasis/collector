@@ -2,7 +2,7 @@
 
 ## 启动
 
-需要 Node.js 22.16 或以上。MySQL 接入使用 mysql2 驱动，先执行 npm ci 安装依赖。
+兼容 Node.js 12.20.2 / npm 6.14.11 及以上版本。MySQL 驱动和兼容依赖使用固定版本，锁文件采用 npm 6 可读取的 v1 格式；先执行 npm ci 安装依赖。
 
 在此文件所在的文件夹打开终端，执行：
 
@@ -44,9 +44,9 @@
 
 ### 兼容、迁移与备份
 
-设置 DATABASE_CLIENT=sqlite、DATABASE_PATH=./data/eorzea.sqlite 可继续使用原 SQLite 后端。切换后端不会自动搬运另一数据库中的账号和会话；已有收藏可通过网站的 JSON 导出／导入迁移，原 SQLite 文件不会被删除。需要保留整个账号数据库时，应先停写并备份，再按对应表结构迁移。
+设置 DATABASE_CLIENT=sqlite、DATABASE_PATH=./data/eorzea.sqlite 可继续使用 SQLite 后端。支持内置 SQLite 的 Node 优先使用原生实现，Node 12 使用无需编译的 sql.js；数据库文件格式仍为 SQLite，目录与档案格式保持兼容。SQLite 文件模式只允许一个应用／运维进程同时打开同一文件，事务提交后持久化并保留回滚语义；MySQL 不受此单实例限制。切换后端不会自动搬运另一数据库中的账号和会话；已有收藏可通过网站的 JSON 导出／导入迁移，原 SQLite 文件不会被删除。需要保留整个账号数据库时，应先停写并备份，再按对应表结构迁移。
 
-SQLite 可执行 npm run db:backup。MySQL 请用官方客户端建立登录配置后生成一致性备份，避免把密码放进命令行：
+SQLite 备份前先停止使用同一数据库文件的应用，再执行 npm run db:backup。遇到数据库锁或未完成的 WAL／journal 时，先确认原进程已停止并使用原 SQLite 环境完成恢复与检查；不要直接删除数据库旁的日志文件。MySQL 请用官方客户端建立登录配置后生成一致性备份，避免把密码放进命令行：
 
     mysql_config_editor set --login-path=eorzea --host=127.0.0.1 --port=13306 --user=eorzea --password
     mysqldump --login-path=eorzea --single-transaction --no-tablespaces --set-gtid-purged=OFF --result-file=archive.sql eorzea_archive

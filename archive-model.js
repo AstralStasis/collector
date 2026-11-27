@@ -6,11 +6,15 @@ export function archiveFingerprint(value) {
   return JSON.stringify({profile:value.profile,owned:[...value.owned].sort(),wishlist:[...value.wishlist].sort(),plan:value.plan,preferences:value.preferences,activity:value.activity});
 }
 export function mergeArchives(base, local, remote) {
-  base=base ?? emptyArchive();
+  if(base===null||base===undefined)base=emptyArchive();
   const result=copyArchive(remote);
   for(const group of ["profile","preferences"]) {
     result[group]={...remote[group]};
-    for(const key of Object.keys(local[group])) if(JSON.stringify(local[group][key])!==JSON.stringify(base[group]?.[key])) result[group][key]=local[group][key];
+    for(const key of Object.keys(local[group])) {
+      const localValue=JSON.stringify(local[group][key]),previous=base[group];
+      const previousValue=previous===null||previous===undefined?undefined:previous[key];
+      if(localValue!==JSON.stringify(previousValue))result[group][key]=local[group][key];
+    }
   }
   for(const field of ["owned","wishlist","plan"]) {
     const a=new Set(base[field]),b=new Set(local[field]),c=new Set(remote[field]);

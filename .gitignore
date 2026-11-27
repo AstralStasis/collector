@@ -5,6 +5,8 @@
 data/
 *.sqlite
 *.sqlite-*
+*.collector-lock
+*.sqlite.*.tmp
 *.log
 coverage/
 

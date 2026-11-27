@@ -1,5 +1,5 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+import test from "./support/test.mjs";
+import { strict as assert } from "assert";
 import { readDatabaseConfig } from "../server/database-config.mjs";
 const root = process.cwd();
 

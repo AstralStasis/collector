@@ -7,7 +7,10 @@ export async function createStore(config) {
   }
   if (config.client === "sqlite") {
     const { ArchiveStore } = await import("./database.mjs");
-    return new ArchiveStore(config.filename);
+    const { createSQLiteDatabase } = await import("./sqlite.mjs");
+    const database = await createSQLiteDatabase(config.filename);
+    try { return new ArchiveStore(config.filename, { database }); }
+    catch (error) { database.close(); throw error; }
   }
   throw new Error("Unsupported database client.");
 }

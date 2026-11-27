@@ -17,18 +17,18 @@ export function validateArchive(raw, keys, categories) {
   const owned=list("owned"), wish=list("wishlist"), plan=list("plan");
   const text=(value,fallback,max) => {
     if (value !== undefined && typeof value !== "string") invalid("档案文字字段必须是字符串。");
-    const s=(value ?? fallback).trim(); if(s.length > max) invalid(`档案文字不能超过 ${max} 个字符。`); return s || fallback;
+    const s=(value == null ? fallback : value).trim(); if(s.length > max) invalid(`档案文字不能超过 ${max} 个字符。`); return s || fallback;
   };
-  const p=raw.preferences ?? defaults().preferences;
+  const p=raw.preferences == null ? defaults().preferences : raw.preferences;
   if (!object(p)) invalid("收藏偏好格式不正确。");
-  const category=p.category === "weapons" ? "relics" : (p.category ?? "all");
+  const category=p.category === "weapons" ? "relics" : (p.category == null ? "all" : p.category);
   if (category !== "all" && !categories.has(category)) invalid("收藏分类不存在。");
   if (p.style !== undefined && !["casual","solo","challenge"].includes(p.style)) invalid("收藏方式不存在。");
   if (p.budget !== undefined && !["20","45","90"].includes(p.budget)) invalid("目标数量设置无效。");
   for(const k of ["excludePaid","prioritizeWish"]) if(p[k] !== undefined && typeof p[k] !== "boolean") invalid("收藏偏好开关必须是布尔值。");
   if (raw.profile.demo !== undefined && typeof raw.profile.demo !== "boolean") invalid("演示标记必须是布尔值。");
   if (raw.activity !== undefined && !Array.isArray(raw.activity)) invalid("收藏动态格式不正确。");
-  const activity=(raw.activity ?? []).slice(0,30).map((entry) => {
+  const activity=(raw.activity == null ? [] : raw.activity).slice(0,30).map((entry) => {
     if(!object(entry) || typeof entry.text !== "string" || !Number.isFinite(entry.at) || entry.at < 0) invalid("收藏动态格式不正确。");
     return {text:entry.text.slice(0,160),at:Math.floor(entry.at)};
   });
@@ -36,7 +36,7 @@ export function validateArchive(raw, keys, categories) {
     version:1,
     profile:{name:text(raw.profile.name,"光之冒险者",18),server:text(raw.profile.server,"艾欧泽亚",24),demo:!!raw.profile.demo},
     owned,wishlist:wish.filter((key) => !owned.includes(key)),plan,
-    preferences:{category,style:p.style ?? "casual",budget:p.budget ?? "45",excludePaid:p.excludePaid !== false,prioritizeWish:p.prioritizeWish !== false},
+    preferences:{category,style:p.style == null ? "casual" : p.style,budget:p.budget == null ? "45" : p.budget,excludePaid:p.excludePaid !== false,prioritizeWish:p.prioritizeWish !== false},
     activity,lastUpdated:Number.isFinite(raw.lastUpdated) ? Math.max(0,Math.floor(raw.lastUpdated)) : 0,
   };
 }

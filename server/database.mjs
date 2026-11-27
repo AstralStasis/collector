@@ -1,22 +1,22 @@
-import { DatabaseSync } from "node:sqlite";
-import { mkdirSync, readFileSync, readdirSync } from "node:fs";
-import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
+import { mkdirSync, readFileSync, readdirSync } from "fs";
+import { createHash } from "crypto";
+import { randomUUID, randomToken } from "./runtime.mjs";
+import { fileURLToPath } from "url";
+import path from "path";
 import { ApiError } from "./errors.mjs";
 import { defaults, validateArchive } from "./validation.mjs";
 const hash=(s) => createHash("sha256").update(s).digest("hex");
 export class ArchiveStore {
-  constructor(filename, {clock=Date.now}={}) {
+  constructor(filename, {clock=Date.now,database}={}) {
     if(filename !== ":memory:") mkdirSync(path.dirname(filename),{recursive:true,mode:0o700});
-    this.kind="sqlite"; this.db=new DatabaseSync(filename); this.clock=clock;
-    this.db.exec("PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL;");
+    if(!database) throw new Error("SQLite must be initialized asynchronously through createStore.");
+    this.kind="sqlite"; this.db=database; this.clock=clock;
     this.migrate(); this.refreshCatalog();
   }
   transaction(fn) {
     this.db.exec("BEGIN IMMEDIATE");
     try { const value=fn(); this.db.exec("COMMIT"); return value; }
-    catch(error) { this.db.exec("ROLLBACK"); throw error; }
+    catch(error) { try { this.db.exec("ROLLBACK"); } catch {} throw error; }
   }
   migrate() {
     this.db.exec("CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL) STRICT");
@@ -30,21 +30,23 @@ export class ArchiveStore {
   refreshCatalog() {
     const rows=this.db.prepare("SELECT item_key,category,document FROM catalog_items ORDER BY rowid").all();
     this.keys=new Set(rows.map(x=>x.item_key)); this.categories=new Set(rows.map(x=>x.category));
-    this.catalog={meta:JSON.parse(this.db.prepare("SELECT document FROM catalog_metadata WHERE id=1").get()?.document ?? "{}"),items:rows.map(x=>JSON.parse(x.document))};
+    const meta=this.db.prepare("SELECT document FROM catalog_metadata WHERE id=1").get();
+    this.catalog={meta:JSON.parse(meta && meta.document != null ? meta.document : "{}"),items:rows.map(x=>JSON.parse(x.document))};
   }
   seedCatalog(catalog) {
     if(!catalog || !Array.isArray(catalog.items) || !catalog.items.length) throw Error("Catalog seed is empty.");
     const digest=hash(JSON.stringify(catalog));
-    if(this.db.prepare("SELECT digest FROM catalog_metadata WHERE id=1").get()?.digest === digest) return false;
+    const meta=this.db.prepare("SELECT digest FROM catalog_metadata WHERE id=1").get();
+    if(meta && meta.digest === digest) return false;
     this.transaction(()=>{
       const item=this.db.prepare("INSERT INTO catalog_items VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(item_key) DO UPDATE SET game_id=excluded.game_id,category=excluded.category,name=excluded.name,english=excluded.english,patch=excluded.patch,source_type=excluded.source_type,document=excluded.document");
       const offer=this.db.prepare("INSERT OR IGNORE INTO exchange_offers VALUES(?,?,?,?,?,?)");
       const clear=this.db.prepare("DELETE FROM exchange_offers WHERE item_key=?");
       for(const x of catalog.items) {
         item.run(x.key,x.id,x.category,x.name,x.english,x.patch,x.sourceType,JSON.stringify(x));clear.run(x.key);
-        for(const e of x.exchanges ?? []) offer.run(x.key,e.currency,e.amount,e.expansion ?? "",e.region ?? "",e.rank ?? null);
+        for(const e of x.exchanges == null ? [] : x.exchanges) offer.run(x.key,e.currency,e.amount,e.expansion == null ? "" : e.expansion,e.region == null ? "" : e.region,e.rank == null ? null : e.rank);
       }
-      this.db.prepare("INSERT INTO catalog_metadata VALUES(1,?,?,?) ON CONFLICT(id) DO UPDATE SET digest=excluded.digest,document=excluded.document,updated_at=excluded.updated_at").run(digest,JSON.stringify(catalog.meta ?? {}),this.clock());
+      this.db.prepare("INSERT INTO catalog_metadata VALUES(1,?,?,?) ON CONFLICT(id) DO UPDATE SET digest=excluded.digest,document=excluded.document,updated_at=excluded.updated_at").run(digest,JSON.stringify(catalog.meta == null ? {} : catalog.meta),this.clock());
     });
     this.refreshCatalog(); return true;
   }
@@ -62,14 +64,15 @@ export class ArchiveStore {
   findUser(username) { return this.db.prepare("SELECT * FROM users WHERE username=? COLLATE NOCASE").get(username); }
   register(id, username, passwordHash) {
     this.transaction(()=>{
-      if(!this.publicUser(id)?.isGuest) throw new ApiError(409,"already_registered","当前会话已经登录。");
+      const user=this.publicUser(id);
+      if(!user || !user.isGuest) throw new ApiError(409,"already_registered","当前会话已经登录。");
       if(this.findUser(username)) throw new ApiError(409,"username_taken","这个账号已被使用。");
       this.db.prepare("UPDATE users SET username=?,password_hash=? WHERE id=?").run(username,passwordHash,id);
     });
   }
   createSession(id, days=30) { return this.rotateSession(id,undefined,days); }
   rotateSession(id, previous, days=30) {
-    const token=randomBytes(32).toString("base64url"), csrfToken=randomBytes(24).toString("base64url"), now=this.clock();
+    const token=randomToken(32), csrfToken=randomToken(24), now=this.clock();
     this.transaction(()=>{
       this.db.prepare("DELETE FROM sessions WHERE expires_at<=?").run(now);
       this.db.prepare("INSERT INTO sessions VALUES(?,?,?,?,?)").run(hash(token),id,csrfToken,now+days*86400000,now);
@@ -97,12 +100,12 @@ export class ArchiveStore {
       const owned=new Set(a.owned), wish=new Set(a.wishlist), plan=new Map(a.plan.map((x,i)=>[x,i]));
       this.db.prepare("DELETE FROM collection_entries WHERE user_id=?").run(id);
       const insert=this.db.prepare("INSERT INTO collection_entries VALUES(?,?,?,?,?)");
-      for(const key of new Set([...a.owned,...a.wishlist,...a.plan])) insert.run(id,key,owned.has(key)?1:0,wish.has(key)?1:0,plan.get(key) ?? null);
+      for(const key of new Set([...a.owned,...a.wishlist,...a.plan])) insert.run(id,key,owned.has(key)?1:0,wish.has(key)?1:0,plan.has(key) ? plan.get(key) : null);
       this.db.prepare("UPDATE profiles SET display_name=?,server_name=?,is_demo=?,preferences=?,activity=?,revision=revision+1,updated_at=? WHERE user_id=?").run(a.profile.name,a.profile.server,a.profile.demo?1:0,JSON.stringify(a.preferences),JSON.stringify(a.activity),this.clock(),id);
       return this.getArchive(id);
     });
   }
-  backup(filename) { mkdirSync(path.dirname(filename),{recursive:true,mode:0o700}); this.db.prepare("VACUUM INTO ?").run(filename); }
+  backup(filename) { return this.db.backup(filename); }
   health() { this.db.prepare("SELECT 1").get(); return {database:this.kind,schemaVersion:1}; }
   close() { this.db.close(); }
 }
